@@ -47,12 +47,12 @@ using GizmoSDK.Gizmo3D;
 
 // Fix some conflicts between unity and Gizmo namespaces
 using gzCamera = GizmoSDK.Gizmo3D.Camera;
-using gzTransform = GizmoSDK.Gizmo3D.Transform;
 using gzTexture = GizmoSDK.Gizmo3D.Texture;
 
 
 // Map utility
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Unity.Extensions;
 using Saab.Utility.Unity.NodeUtils;
 using Saab.Utility.GfxCaps;
@@ -289,9 +289,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         // List of all registered builds, builders must currently be registered before initialize
         private readonly List<INodeBuilder> _builders = new List<INodeBuilder>();
 
-        // Used during lazy asset loading to defer the traversal of shared assets until first use
-        private readonly Dictionary<uint, AssetTraversalFuture> _deferredAssetLoads = new Dictionary<uint, AssetTraversalFuture>();
-
         // special dedicated builder used when instancing gzRefNodes
         private readonly AssetInstanceBuilder _assetInstanceBuilder = new AssetInstanceBuilder();
 
@@ -300,6 +297,19 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         // Used by builders to share and manage Material resources
         private readonly MaterialManager _materialManager = new MaterialManager();
+
+        private SceneTraverser _sceneTraverser;
+
+        private SceneTraverser SceneTraverser
+        {
+            get
+            {
+                if (_sceneTraverser == null)
+                    _sceneTraverser = new SceneTraverser(this);
+
+                return _sceneTraverser;
+            }
+        }
 
         // Pools of pre allocated and recycled node objects, used to avoid runtime allocations and instead recycle game objects
         private readonly Stack<NodeHandle>[] _free = new Stack<NodeHandle>[byte.MaxValue];
@@ -314,22 +324,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         // Used during pre allocation to spread allocations evenly across pools
         private readonly Queue<byte> _preAllocationRoundRobinQueue = new Queue<byte>();
 
-        // Stores traversal state data during a traversal pass, passed by reference to reduce parameter passing
-        private struct TraversalStateData
-        {
-            public NodeHandle NodeHandle;
-            public NodeHandle ActiveStateNode;
-            public TraversalState TraversalStateFlags;
-            public IntersectMaskValue IntersectMask;
-        }
-
-        // stores traversal information to allow continutation of a traversal at a later time, currently used for lazy load
-        private struct AssetTraversalFuture
-        {
-            public Node AssetNode;
-            public TraversalStateData TraversalState;
-        }
-
         public void AddBuilder(INodeBuilder builder)
         {
             if (_initialized)
@@ -343,7 +337,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             _builders.Remove(builder);
         }
 
-        private INodeBuilder GetBuilderForNode(Node node, in TraversalStateData data)
+        private INodeBuilder GetBuilderForNode(Node node, in TraversalContext data)
         {
             // performance critical, do not change to foreach
             for (var i = 0; i < _builders.Count; ++i)
@@ -359,7 +353,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             return null;
         }
 
-        private void BuildNode(INodeBuilder builder, in TraversalStateData data)
+        private void BuildNode(INodeBuilder builder, in TraversalContext data)
         {
             var priority = builder.Priority;
             
@@ -391,100 +385,47 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
-        private static void ProcessTransform(gzTransform node, unTransform transform)
-        {
-            // Check if transform is Active and not unit (1)
-            if (!node.IsActive())
-                return;
-
-            // todo (opt): GetTransform(out matrix, out active) to reduce P/INVOKE calls by 50%
-            node.GetTransform(out Matrix4 mat4);
-
-            transform.localPosition = mat4.Translation().ToVector3();
-            transform.localScale = mat4.Scale().ToVector3();
-            transform.localRotation = mat4.Quaternion().ToQuaternion();
-        }
-
-        private void ProcessDynamicLoader(DynamicLoader node, in TraversalStateData data)
-        {
-            // earlier impl allowed this and would return the registered node, this seems wrong but I should verify this with AMO
-            System.Diagnostics.Debug.Assert(!NodeUtils.HasGameObjectsUnsafe(node.GetNativeReference()));
-
-            //// Possibly we can add action interfaces for dyn load childs as they will get traversable if they have node actons
-            //if (NodeUtils.FindGameObjectsUnsafe(node.GetNativeReference(), out List<GameObject> list))
-            //{
-            //    return list[0];
-            //}
-            
-            // Add to registry
-            NodeUtils.AddGameObjectReferenceUnsafe(node.GetNativeReference(), data.NodeHandle.gameObject);
-            data.NodeHandle.inNodeUtilsRegistry = true;
-
-            OnNewLoader?.Invoke(data.NodeHandle.gameObject, false);
-
-            // gzDynamicLoader is gzGroup
-            // ProcessGroup(node, in data, false);
-        }
-
-        private void ProcessLod(Lod node, in TraversalStateData data)
-        {
-            // gzLod is gzGroup
-            ProcessGroup(node, in data, true);
-
-            OnNewLod?.Invoke(data.NodeHandle.gameObject, data.TraversalStateFlags.HasFlag(TraversalState.Asset));
-        }
-
-        private void ProcessRoi(Roi node, in TraversalStateData data)
-        {
-            RegisterNodeForUpdate(data.NodeHandle);
-
-            // gzRoi is gzTransform
-            ProcessTransform(node, data.NodeHandle.transform);
-
-            // gzRoi is gzGroup
-            ProcessGroup(node, in data, true);
-        }
-
-        private void ProcessRoiNode(RoiNode node, in TraversalStateData data)
-        {
-            RegisterNodeForUpdate(data.NodeHandle);
-
-            // gzRoiNode is gzTransform
-            ProcessTransform(node, data.NodeHandle.transform);
-            
-            // gzRoiNode is gzGroup
-            ProcessGroup(node, in data, false);
-        }
-
-        private void RegisterNodeForUpdate(NodeHandle nodeHandle)
+        internal void RegisterNodeForUpdate(NodeHandle nodeHandle)
         {
             nodeHandle.updateTransform = true;
             nodeHandle.inNodeUpdateList = true;
             updateNodeObjects.AddLast(nodeHandle.gameObject);
         }
 
-        private GameObject ProcessRefNode(RefNode refNode, in TraversalStateData data)
+        internal void NotifyNewLoader(GameObject gameObject)
+        {
+            OnNewLoader?.Invoke(gameObject, false);
+        }
+
+        internal void NotifyNewLod(GameObject gameObject, bool isAsset)
+        {
+            OnNewLod?.Invoke(gameObject, isAsset);
+        }
+
+        internal GameObject ProcessRefNode(RefNode refNode, in TraversalContext data)
         {
             // mostly for debug purposes, will allow us to skip asset instancing
-            if (Settings.Options.HasFlag(SceneManagerOptions.DisableInstancing))
+            if (SceneTraverser.AssetPolicy.IsInstancingDisabled(Settings.Options))
                 return null;
 
             // copy the state so that we can write to it
-            TraversalStateData state = data;
+            TraversalContext state = data;
 
             // we dont expect RefNodes when traversing asset subtree or during instancing (i.e. nested assets)
             System.Diagnostics.Debug.Assert(!state.TraversalStateFlags.HasFlag(TraversalState.Asset));
             System.Diagnostics.Debug.Assert(!state.TraversalStateFlags.HasFlag(TraversalState.AssetInstance));
 
-            if (Settings.Options.HasFlag(SceneManagerOptions.LazyLoadAssets))
+            if (SceneTraverser.AssetPolicy.UsesLazyLoading(Settings.Options))
             {
-                if (_deferredAssetLoads.TryGetValue(refNode.ReferenceNodeID, out AssetTraversalFuture assetTraverseFuture))
+                if (SceneTraverser.AssetPolicy.TryTakeDeferred(
+                    refNode.ReferenceNodeID,
+                    out DeferredAssetTraversal deferredTraversal))
                 {
-                    _deferredAssetLoads.Remove(refNode.ReferenceNodeID);
-
-                    var assetState = assetTraverseFuture.TraversalState;
-                    var asset = TraverseInternal(assetTraverseFuture.AssetNode, ref assetState);
-                    asset.transform.SetParent(assetTraverseFuture.TraversalState.NodeHandle.transform);
+                    var assetContext = deferredTraversal.TraversalContext;
+                    var asset = SceneTraverser.Traverse(
+                        deferredTraversal.AssetNode,
+                        ref assetContext).GameObject;
+                    asset.transform.SetParent(deferredTraversal.TraversalContext.NodeHandle.transform);
                 }
             }
 
@@ -498,15 +439,15 @@ namespace Saab.Foundation.Unity.MapStreamer
             state.TraversalStateFlags |= TraversalState.AssetInstance;
 
             // traverse down the subgraph
-            ProcessGroup(refNode, in state, false);
+            TraverseChildren(refNode, in state);
 
             // return the created gameobject for this instance
             return state.NodeHandle.gameObject;
         }
 
-        private GameObject ProcessGeometry(Geometry geo, in TraversalStateData data)
+        internal GameObject ProcessGeometry(Geometry geo, in TraversalContext data)
         {
-            TraversalStateData state = data;
+            TraversalContext state = data;
 
             bool isAssetInstance = (data.TraversalStateFlags & TraversalState.AssetInstance) == TraversalState.AssetInstance;
             if (isAssetInstance)
@@ -564,61 +505,25 @@ namespace Saab.Foundation.Unity.MapStreamer
             return state.NodeHandle.gameObject;
         }
 
-        private GameObject ProcessCrossboard(Crossboard crossboard, in TraversalStateData data)
+        internal GameObject ProcessCrossboard(Crossboard crossboard, in TraversalContext data)
         {
             OnNewCrossboard?.Invoke(data.NodeHandle.gameObject, data.TraversalStateFlags.HasFlag(TraversalState.Asset));
             return null;
         }
 
-        // Process and connect a node hierarchy to a GameObject hierarchy
-        private void ProcessGroup(Group node, in TraversalStateData data, bool addActionInterfaces = false)
+        internal void TraverseChildren(
+            Group node,
+            in TraversalContext context,
+            bool addActionInterfaces = false)
         {
-            var parent = data.NodeHandle.transform;
-
-            TraversalStateData state;
-
-            // use addActionInterface if we shall be able to enable/disable part of the tree using action callbacks
-            if (addActionInterfaces)        
-            {
-                foreach (var child in node)
-                {
-                    state = data;
-                    var gameObject = TraverseInternal(child, ref state);
-
-                    if (gameObject == null)
-                        continue;
-
-                    var childNodeHandle = gameObject.GetComponent<NodeHandle>();
-
-                    var childPtr = child.GetNativeReference();
-                    if (!NodeUtils.HasGameObjectsUnsafe(childPtr))
-                    {
-                        NodeUtils.AddGameObjectReferenceUnsafe(childPtr, gameObject);
-
-                        childNodeHandle.inNodeUtilsRegistry = true;
-                        child.AddActionInterface(_actionReceiver, NodeActionEvent.IS_TRAVERSABLE); 
-                        child.AddActionInterface(_actionReceiver, NodeActionEvent.IS_NOT_TRAVERSABLE);
-                    }
-
-                    gameObject.transform.SetParent(parent, false);
-                }
-                
-                return;
-            }
-
-            foreach (var child in node)
-            {
-                state = data;
-                var gameObject = TraverseInternal(child, ref state);
-
-                if (gameObject == null)
-                    continue;
-
-                gameObject.transform.SetParent(parent, false);
-            }
+            SceneTraverser.TraverseChildren(
+                node,
+                in context,
+                addActionInterfaces,
+                _actionReceiver);
         }
 
-        private NodeHandle CreateNodeHandle(Node node, PoolObjectFeature feature)
+        internal NodeHandle CreateNodeHandle(Node node, PoolObjectFeature feature)
         {
             var nodeHandle = Allocate(feature, node);
             // we only use the name inside editor to avoid allocations in runtime
@@ -639,115 +544,20 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             // if dynloaded we should add actions for traverse here as we can be toggled on/off by loader (fancier look)
 
-            var data = new TraversalStateData()
+            var data = new TraversalContext()
             {
                 IntersectMask = node.IntersectMask,
             };
 
-            return TraverseInternal(node, ref data);
+            return SceneTraverser.Traverse(node, ref data).GameObject;
         }
 
-        private GameObject TraverseInternal(Node node, ref TraversalStateData data)
+        internal void ProcessExternalReference(
+            ExtRef node,
+            GameObject gameObject)
         {
-            var nodeMask = node.IntersectMask;
-
-            // make sure asset resource nodes does not zero the mask since we rely on it when selecting builders
-            if (nodeMask != IntersectMaskValue.NOTHING)
-                data.IntersectMask &= nodeMask;
-
-            // mostly for debug purposes, will limit what type of node we traverse
-            // (would be much better if this type of culling was a setting on gzCamera so that we didnt even consider the objects)
-            if ((data.IntersectMask & Settings.IntersectMask) == IntersectMaskValue.NOTHING)
-                return null;
-
-            // Check for asset top node
-            if ((data.TraversalStateFlags & (TraversalState.Asset | TraversalState.AssetInstance)) == TraversalState.None
-                && node.HasNodeID())
-            {
-                // mostly for debug purposes, will allow us to skip asset loading
-                if (Settings.Options.HasFlag(SceneManagerOptions.DisableInstancing))
-                    return null;
-
-                // we do not expect RefNodes during asset traversal
-                Debug.Assert(!data.TraversalStateFlags.HasFlag(TraversalState.AssetInstance));
-
-                // Set instancing copy flags so that we share mesh and material between instances
-                node.CopyMode = (CopyMode)(CopyModeNode.SHARE_GEOMETRY | CopyModeNode.SHARE_STATE | CopyModeNode.SHARE_TEXTURE);
-
-                // continue traversal with the asset flag set
-                data.TraversalStateFlags |= TraversalState.Asset;
-
-                if (Settings.Options.HasFlag(SceneManagerOptions.LazyLoadAssets))
-                {
-                    // only we dont, we delay this traversal until a refnode references us
-                    _deferredAssetLoads.Add(node.NodeID, new AssetTraversalFuture()
-                    {
-                        AssetNode = node,
-                        TraversalState = data,
-                    });
-
-                    return null;
-                }
-            }
-
-            // --------------------------- Add game object ---------------------------------------
-
-            // builder nodes
-            switch (node)
-            {
-                case RefNode refNode:
-                    return ProcessRefNode(refNode, in data);
-                case Geometry geom:
-                    return ProcessGeometry(geom, in data);
-                case Crossboard crossboard:
-                    return ProcessCrossboard(crossboard, in data);
-                default:
-                    break;
-            }
-
-            data.NodeHandle = CreateNodeHandle(node, PoolObjectFeature.None);
-
-            if (node.HasState())
-                data.ActiveStateNode = data.NodeHandle;
-
-            var activeGo = data.NodeHandle.gameObject;
-
-            // -------------- Check if asset objects --------------------------------------------
-            if (node.CullMask == CullMaskValue.ALL)     // Not redered or intersected
-            {
-                activeGo.SetActive(false);            // Lets deactivate the object but build it as ordinary
-            }
-
-            switch (node)
-            {
-                case Roi roi:
-                    ProcessRoi(roi, in data);
-                    break;
-                case RoiNode roiNode:
-                    ProcessRoiNode(roiNode, in data);
-                    break;
-                case gzTransform tr:
-                    ProcessTransform(tr, activeGo.transform);
-                    ProcessGroup(tr, in data, false);
-                    break;
-                case DynamicLoader dl:
-                    ProcessDynamicLoader(dl, in data);
-                    break;
-                case Lod ld:
-                    ProcessLod(ld, in data);
-                    break;
-                case Group group:
-                    ProcessGroup(group, in data, false);
-                    break;
-                case ExtRef extRef:
-                    var info = new AssetLoadInfo(activeGo, extRef.ResourceURL, extRef.ObjectID);
-                    pendingAssetLoads.Push(info);
-                    break;
-                default:
-                    break;
-            }
-
-            return activeGo;
+            var info = new AssetLoadInfo(gameObject, node.ResourceURL, node.ObjectID);
+            pendingAssetLoads.Push(info);
         }
 
         private IEnumerator AssetLoader()
@@ -815,7 +625,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                     string errorString = "";
                     SerializeAdapter.AdapterError errorType = SerializeAdapter.AdapterError.NO_ERROR;
                     bool retry = false;
-
                     node = DbManager.LoadDB(mapURL, ref errorString, ref errorType);
 
                     if (node == null || !node.IsValid())
@@ -824,8 +633,11 @@ namespace Saab.Foundation.Unity.MapStreamer
 
                         OnMapLoadError?.Invoke(ref mapURL, errorString, errorType, ref retry);
 
+
                         if (retry)
+                        {
                             continue;
+                        }
 
                         return false;
                     }
@@ -929,7 +741,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _materialManager.Clear();
 
                 // clear all pending asset loads
-                _deferredAssetLoads.Clear();
+                SceneTraverser.AssetPolicy.ClearDeferred();
 
                 // clear any pending builds
                 pendingBuilds.Clear();
