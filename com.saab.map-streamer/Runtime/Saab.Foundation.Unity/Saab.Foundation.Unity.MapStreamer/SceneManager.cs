@@ -53,22 +53,15 @@ using gzTexture = GizmoSDK.Gizmo3D.Texture;
 // Map utility
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
 using Saab.Unity.Extensions;
-using Saab.Utility.Unity.NodeUtils;
 using Saab.Utility.GfxCaps;
 
-// Fix unity conflicts
-using unTransform = UnityEngine.Transform;
-
 // System
-using System.Collections.Generic;
 using System;
-using System.Collections;
-using UnityEngine.Networking;
-using System.Linq;
 
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
@@ -116,25 +109,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         LazyLoadAssets = 1 << 2,
     }
-
-    /// <summary>
-    /// Flags used during traversal to keep track of state
-    /// </summary>
-    [Flags]
-    public enum TraversalState
-    {
-        None,
-        /// <summary>
-        /// Set when traversing an asset subgraph i.e. /Resources
-        /// </summary>
-        Asset = 0x01,
-
-        /// <summary>
-        /// Set when traversing a gzRefNode subgraph
-        /// </summary>
-        AssetInstance = 0x02,
-    }
-
 
     [Serializable]
     public struct SceneManagerSettings
@@ -198,8 +172,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         private static readonly ProfilerMarker _profilerMarkerRender = new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
         private static readonly ProfilerMarker _profilerMarkerCull = new ProfilerMarker(ProfilerCategory.Render, "SM-Cull");
         private static readonly ProfilerMarker _profilerMarkerTraverse = new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
-        private static readonly ProfilerMarker _profilerFree = new ProfilerMarker(ProfilerCategory.Render, "SM-Free");
-
         private bool _initialized;
 
         private readonly NodeUpdateRegistry _nodeUpdateRegistry =
@@ -222,6 +194,8 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private SceneTraverser _sceneTraverser;
         private DynamicNodeLoadCoordinator _dynamicNodeLoads;
+        private NodeHandlePool _nodeHandlePool;
+        private NodeHierarchyUnloader _hierarchyUnloader;
         private NodeEvents _nodeEvents;
 
         private NodeEvents NodeEvents
@@ -250,7 +224,8 @@ namespace Saab.Foundation.Unity.MapStreamer
                 if (_sceneTraverser == null)
                 {
                     if (_nodeHandleFactory == null)
-                        _nodeHandleFactory = new NodeHandleFactory(Allocate);
+                        _nodeHandleFactory =
+                            new NodeHandleFactory(_nodeHandlePool.Allocate);
 
                     if (_geometryOperations == null)
                     {
@@ -274,19 +249,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return _sceneTraverser;
             }
         }
-
-        // Pools of pre allocated and recycled node objects, used to avoid runtime allocations and instead recycle game objects
-        private readonly Stack<NodeHandle>[] _free = new Stack<NodeHandle>[byte.MaxValue];
-
-        // Prefab when allocating node handles for specific pools
-        private readonly NodeHandle[] _poolPrefabs = new NodeHandle[byte.MaxValue];
-
-        // Stores objects that have been unloaded but not yet freed, objects will eventually be returned to the free list,
-        // this is to reduce the time spent freeing nodes in a single frame
-        private readonly Stack<unTransform> _pendingFrees = new Stack<unTransform>();
-
-        // Used during pre allocation to spread allocations evenly across pools
-        private readonly Queue<byte> _preAllocationRoundRobinQueue = new Queue<byte>();
 
         public void AddBuilder(INodeBuilder builder)
         {
@@ -410,9 +372,9 @@ namespace Saab.Foundation.Unity.MapStreamer
 
                 if (_root)
                 {
-                    UnloadHierarchy(_root.transform);
-                    Free(_root.transform);
-                    FreeFromPendingQueue(int.MaxValue);
+                    _hierarchyUnloader.Unload(_root.transform);
+                    _nodeHandlePool.QueueFree(_root.transform);
+                    _nodeHandlePool.ProcessPending(int.MaxValue);
                     _root = null;
                 }
 
@@ -469,30 +431,24 @@ namespace Saab.Foundation.Unity.MapStreamer
             // Add builder for registered types
             AddDefaultBuilders();
 
-            // init object pooling
-            _free[(byte)PoolObjectFeature.None] = new Stack<NodeHandle>(65000);
-            
-            // init allocator prefab for logical objects
-            _poolPrefabs[0] = CreateAllocatorPrefabForBuilder(null);
-
             foreach (var builder in _builderRegistry)
             {
-                var idx = (byte)builder.Feature;
-                if (_free[idx] == null)
-                {
-                    _free[idx] = new Stack<NodeHandle>(65000);
-                    _poolPrefabs[idx] = CreateAllocatorPrefabForBuilder(builder);
-                }
-
                 builder.SetTextureManager(_textureManager);
                 builder.SetMaterialManager(_materialManager);
             }
 
-            var pools = _free.Where(p => p != null).ToArray();
-            foreach (byte poolId in pools.Select(p => (byte)Array.IndexOf(_free, p)))
-                _preAllocationRoundRobinQueue.Enqueue(poolId);
+            if (_nodeHandlePool == null)
+                _nodeHandlePool = new NodeHandlePool(_textureManager, NodeEvents);
 
-            if (_poolPrefabs[(int)PoolObjectFeature.StaticMesh] == null)
+            _nodeHandlePool.Initialize(_builderRegistry);
+
+            if (_hierarchyUnloader == null)
+            {
+                _hierarchyUnloader =
+                    new NodeHierarchyUnloader(_nodeUpdateRegistry);
+            }
+
+            if (!_nodeHandlePool.HasPool(PoolObjectFeature.StaticMesh))
             {
                 Settings.Options |= SceneManagerOptions.DisableInstancing;
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "disabling instancing, no builder for StaticMesh feature");
@@ -503,8 +459,8 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             _dynamicNodeLoads = new DynamicNodeLoadCoordinator(
                 SceneTraverser.Begin,
-                UnloadHierarchy,
-                Free);
+                _hierarchyUnloader.Unload,
+                _nodeHandlePool.QueueFree);
             _dynamicNodeLoads.Subscribe();
             SceneTraverser.SetActionReceiver(_dynamicNodeLoads.ActionReceiver);
 
@@ -554,22 +510,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             StartCoroutine(_externalAssetLoader.Process());
 
             return true;
-        }
-
-        private NodeHandle CreateAllocatorPrefabForBuilder(INodeBuilder builder)
-        {
-            var feature = builder != null ? builder.Feature : PoolObjectFeature.None;
-
-            var prefab = new GameObject();
-            prefab.SetActive(false);
-#if UNITY_EDITOR
-            prefab.hideFlags = HideFlags.HideInHierarchy;
-#endif
-            var nh = prefab.AddComponent<NodeHandle>();
-            nh.featureKey = feature;
-            builder?.InitPoolObject(prefab);
-
-            return nh;
         }
 
         public bool Uninitialize()
@@ -684,10 +624,10 @@ namespace Saab.Foundation.Unity.MapStreamer
             #region Update slow loading assets ------------------------------------------------------------------------------
 
             // free up to a maximum number of nodes
-            FreeFromPendingQueue(1000);
+            _nodeHandlePool.ProcessPending(1000);
 
             // make sure we have available nodes in our pools
-            PreAllocateNodeHandle(10000, TimeSpan.FromMilliseconds(1));
+            _nodeHandlePool.PreAllocate(10000, TimeSpan.FromMilliseconds(1));
 
 
             var remainingBuildTime = TimeSpan.FromSeconds(Settings.MaxBuildTime) - _renderTimer.Elapsed;
@@ -850,195 +790,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 #endif
         }
 
-        private NodeHandle Allocate(PoolObjectFeature featureKey, Node node)
-        {
-            var idx = (byte)featureKey;
-            var pool = _free[idx];               
-
-            if (pool.Count == 0)
-                FreeFromPendingQueue(100);
-            
-            if (pool.Count > 0)
-            {
-                var res = pool.Pop();
-                res.node = node;
-
-                // init
-                res.gameObject.SetActive(true);             // <-- stupid slow
-#if UNITY_EDITOR
-                res.gameObject.hideFlags = HideFlags.None;
-#endif
-
-                return res;
-            }
-
-            var nh = Instantiate(_poolPrefabs[idx]);
-            nh.node = node;
-            nh.gameObject.SetActive(true);
-            return nh;
-        }
-
-        private void Free(unTransform transform)
-        {
-            transform.parent = null;
-            transform.gameObject.SetActive(false);
-#if UNITY_EDITOR
-            transform.hideFlags = HideFlags.HideInHierarchy;
-#endif
-            
-            _pendingFrees.Push(transform);
-        }
-
-        private void UnloadHierarchy(unTransform transform)
-        {
-            if (transform.TryGetComponent<NodeHandle>(out var nodeHandle))
-            {
-                // remove from update list
-                if (nodeHandle.inNodeUpdateList)
-                    _nodeUpdateRegistry.Unregister(nodeHandle);
-
-                // remove from registry
-                if (nodeHandle.inNodeUtilsRegistry)
-                    NodeUtils.RemoveGameObjectReferenceUnsafe(nodeHandle.node.GetNativeReference(), transform.gameObject);
-
-                // invalidate any pending builds for this node handle
-                nodeHandle.version++;
-            }
-            
-            // recurse down the hierarchy
-            for (var i = 0; i < transform.childCount; ++i)
-                UnloadHierarchy(transform.GetChild(i));
-        }
-
-        private void FreeFromPendingQueue(int count)
-        {
-            _profilerFree.Begin();
-            while (_pendingFrees.Count > 0 && count > 0)
-            {
-                var free = _pendingFrees.Pop();
-        
-                // orphan all children and put them on the free frontier
-                for (var i = free.childCount - 1; i >= 0; --i)
-                    Free(free.GetChild(i));
-        
-                FreeInternal(free);
-        
-                --count;
-            }
-            _profilerFree.End();
-        }
-
-        private void PreAllocateNodeHandle(int count, TimeSpan timeBudget)
-        {
-            if (_preAllocationRoundRobinQueue.Count == 0)
-                return;
-
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-
-            var fullyAllocatedPools = 0;
-
-            while (timer.Elapsed < timeBudget && fullyAllocatedPools < _preAllocationRoundRobinQueue.Count)
-            {
-                var poolId = _preAllocationRoundRobinQueue.Dequeue();
-                _preAllocationRoundRobinQueue.Enqueue(poolId);
-                
-                var pool = _free[poolId];
-
-                // do in batches of 100
-                var remaining = count - pool.Count;
-                if (remaining > 100)
-                    remaining = 100;
-
-                if (pool.Count < count)
-                    AllocateNodeHandleForPool(poolId, remaining);
-                else
-                    fullyAllocatedPools++;
-            }
-        }
-
-        private void AllocateNodeHandleForPool(byte poolId, int count)
-        {
-            for (var i = 0; i < count; ++i)
-            {
-                var nh = Instantiate(_poolPrefabs[poolId]);
-#if UNITY_EDITOR
-                nh.gameObject.hideFlags = HideFlags.HideInHierarchy;
-#endif
-                _free[poolId].Push(nh);
-            }
-        }
-        
-
-        private void FreeInternal(unTransform transform)
-        {
-            if (transform.TryGetComponent<NodeHandle>(out var nodeHandle))
-                FreeHandle(nodeHandle);
-            else
-                Destroy(transform.gameObject);
-        }
-
-        private void FreeHandle(NodeHandle nodeHandle)
-        {
-            // get pool managing this type of node
-            var pool = _free[(byte)nodeHandle.featureKey];
-
-            // return the handle to the pool
-            pool.Push(nodeHandle);
-
-            var go = nodeHandle.gameObject;
-            
-            var tr = go.transform;
-            //tr.parent = null;
-            tr.localPosition = Vector3.zero;
-            tr.localRotation = UnityEngine.Quaternion.identity;
-            tr.localScale = Vector3.one;
-
-            var node = nodeHandle.node;
-
-            if (nodeHandle.builder != null)
-            {
-                bool sharedNode = nodeHandle.stateFlags.HasFlag(NodeStateFlags.AssetInstance);
-                nodeHandle.builder.BuiltObjectReturnedToPool(go, sharedNode);
-            }
-
-            if (node is Geometry)
-            {
-                switch (nodeHandle.featureKey)
-                {
-                    case PoolObjectFeature.Terrain:
-                        NodeEvents.NotifyTerrainRemoved(go);
-                        break;
-                    case PoolObjectFeature.StaticMesh:
-                        NodeEvents.NotifyGeometryRemoved(go);
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            nodeHandle.Recycle(_textureManager);
-
-            NodeEvents.NotifyEnteredPool(go);
-        }
     }
-
-    [Flags]
-    public enum PoolObjectFeature : byte
-    {
-        //
-        None = 0,
-
-        // Terrain
-        Terrain = 1 << 0,
-
-        //
-        StaticMesh = 1 << 1,
-
-        //
-        Crossboard = 1 << 2,
-    }
-
-
 }
 
 
