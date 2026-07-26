@@ -2,12 +2,13 @@
 
 using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
     internal sealed class CrossboardNodeProcessor : NodeProcessor<Crossboard>
     {
-        public CrossboardNodeProcessor(SceneManager sceneManager) : base(sceneManager) { }
+        public CrossboardNodeProcessor(NodeEvents nodeEvents) : base(nodeEvents) { }
 
         public override bool RequiresDefaultNodeHandle => false;
 
@@ -15,7 +16,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             Crossboard node,
             ref TraversalContext context)
         {
-            SceneManager.ProcessCrossboard(node, in context);
+            NodeEvents.NotifyCrossboardCreated(
+                context.NodeHandle.gameObject,
+                context.TraversalStateFlags.HasFlag(TraversalState.Asset));
             return TraversalResult.Handled();
         }
     }

@@ -52,7 +52,10 @@ using gzTexture = GizmoSDK.Gizmo3D.Texture;
 
 // Map utility
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
 using Saab.Unity.Extensions;
 using Saab.Utility.Unity.NodeUtils;
 using Saab.Utility.GfxCaps;
@@ -153,6 +156,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     }
 
 
+    [RequireComponent(typeof(NodeEvents))]
     public class SceneManager : MonoBehaviour
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
@@ -162,22 +166,9 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         // Events ----------------------------------------------------------
 
-        public delegate void EventHandler_OnGameObject(GameObject o, bool isAsset);
-        public delegate void EventHandler_OnGameObjectFree(GameObject o);
         public delegate void EventHandler_OnNode(Node node);
         public delegate void EventHandler_OnUpdateCamera(double renderTime);
         public delegate void EventHandler_OnMapLoadError(ref string url,string errorString,SerializeAdapter.AdapterError errorType,ref bool retry);
-
-        // Notifications for external users that wants to add components to created game objects. Be swift as we are in edit lock
-
-        public event EventHandler_OnGameObject      OnNewTerrain;       // GameObject with mesh (feature == Terrain)
-        public event EventHandler_OnGameObject      OnNewGeometry;      // GameObject with mesh (feature == Static Mesh)
-        public event EventHandler_OnGameObject      OnNewCrossboard;    // CrossBoard/tree placement 
-        public event EventHandler_OnGameObject      OnNewLod;           // GameObject that toggles on off dep on distance
-        public event EventHandler_OnGameObject      OnNewLoader;        // GameObject that works like a dynamic loader
-        public event EventHandler_OnGameObjectFree  OnEnterPool;        // Moving GO to pool
-        public event EventHandler_OnGameObjectFree  OnRemoveGeometry;   // Removing GO from Scene
-        public event EventHandler_OnGameObjectFree  OnRemoveTerrain;   // Removing GO from Scene
 
         public delegate void EventHandler_Traverse(bool locked);    // Pre and Post traversal in locked or unlocked mode (edit)
 
@@ -195,8 +186,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         private CullTraverseAction _native_traverse_action;
         private GameObject _root;
 
-        private NodeAction _actionReceiver;
-
         private readonly string ID = "Saab.Foundation.Unity.MapStreamer.SceneManager";
 
         //#pragma warning disable 414
@@ -211,86 +200,19 @@ namespace Saab.Foundation.Unity.MapStreamer
         private static readonly ProfilerMarker _profilerMarkerTraverse = new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
         private static readonly ProfilerMarker _profilerFree = new ProfilerMarker(ProfilerCategory.Render, "SM-Free");
 
-
-        struct NodeLoadInfo
-        {
-            public NodeLoadInfo(DynamicLoadingState _state, DynamicLoader _loader, Node _node)
-            {
-                state = _state;
-                loader = _loader;
-                node = _node;
-            }
-
-            public DynamicLoadingState state;
-            public DynamicLoader loader;
-            public Node node;
-
-        };
-
-        // The activation struct carries information about the state of a native node (loaded/unloaded)
-        struct ActivationInfo
-        {
-            public ActivationInfo(NodeActionEvent _state, Node _node)
-            {
-                state = _state;
-                node = _node;
-            }
-
-            public NodeActionEvent state;
-            public Node node;
-        };
-
-        
-        // AssetLoadInfo carries info about loading an asset
-        struct AssetLoadInfo
-        {
-            public AssetLoadInfo(GameObject _parent, string _res_url, string _obj_id)
-            {
-                parent = _parent;
-                resource_url = _res_url;
-                object_id = _obj_id;
-            }
-
-            public GameObject parent;
-            public string resource_url;
-            public string object_id;
-        };
-
-        // stores information for a pending build job
-        struct BuildInfo
-        {
-            public INodeBuilder Builder;
-            public NodeHandle NodeHandle;
-            public NodeHandle ActiveStateNode;
-            public byte Version;
-        }
-
         private bool _initialized;
 
-        // A queue for new pending loads/unloads
-        private readonly List<NodeLoadInfo> pendingLoaders = new List<NodeLoadInfo>(100);
-        private readonly Dictionary<IntPtr,NodeLoadInfo> activePendingLoaders = new Dictionary<IntPtr, NodeLoadInfo>();
+        private readonly NodeUpdateRegistry _nodeUpdateRegistry =
+            new NodeUpdateRegistry();
+        private readonly ExternalAssetLoader _externalAssetLoader =
+            new ExternalAssetLoader();
+        private NodeHandleFactory _nodeHandleFactory;
 
-        // A queue for pending activations/deactivations
-        private readonly List<ActivationInfo> pendingActivations = new List<ActivationInfo>(100);
-  
-        // A queue for post build work
-        private readonly Queue<BuildInfo> pendingBuilds = new Queue<BuildInfo>(1000);
-
-        // A queue for AssetLoading
-        private readonly Stack<AssetLoadInfo> pendingAssetLoads = new Stack<AssetLoadInfo>(100);
-
-        // The current active asset bundles
-        private readonly Dictionary<string, AssetBundle> currentAssetBundles = new Dictionary<string, AssetBundle>();
-
-        // Linked List for nodes that needs updates on update
-        private readonly LinkedList<GameObject> updateNodeObjects = new LinkedList<GameObject>();
-        
-        // List of all registered builds, builders must currently be registered before initialize
-        private readonly List<INodeBuilder> _builders = new List<INodeBuilder>();
-
-        // special dedicated builder used when instancing gzRefNodes
-        private readonly AssetInstanceBuilder _assetInstanceBuilder = new AssetInstanceBuilder();
+        private readonly GeometryBuilderRegistry _builderRegistry =
+            new GeometryBuilderRegistry();
+        private readonly NodeBuildScheduler _buildScheduler =
+            new NodeBuildScheduler();
+        private GeometryNodeOperations _geometryOperations;
 
         // Used by builders to share and manage texture resources
         private readonly TextureManager _textureManager = new TextureManager();
@@ -299,13 +221,55 @@ namespace Saab.Foundation.Unity.MapStreamer
         private readonly MaterialManager _materialManager = new MaterialManager();
 
         private SceneTraverser _sceneTraverser;
+        private DynamicNodeLoadCoordinator _dynamicNodeLoads;
+        private NodeEvents _nodeEvents;
+
+        private NodeEvents NodeEvents
+        {
+            get
+            {
+                if (_nodeEvents == null)
+                    _nodeEvents = GetComponent<NodeEvents>();
+
+                return _nodeEvents;
+            }
+        }
+
+        private void Awake()
+        {
+            _nodeEvents = GetComponent<NodeEvents>();
+
+            if (_nodeEvents == null)
+                _nodeEvents = gameObject.AddComponent<NodeEvents>();
+        }
 
         private SceneTraverser SceneTraverser
         {
             get
             {
                 if (_sceneTraverser == null)
-                    _sceneTraverser = new SceneTraverser(this);
+                {
+                    if (_nodeHandleFactory == null)
+                        _nodeHandleFactory = new NodeHandleFactory(Allocate);
+
+                    if (_geometryOperations == null)
+                    {
+                        _geometryOperations = new GeometryNodeOperations(
+                            _builderRegistry,
+                            _buildScheduler,
+                            _nodeHandleFactory,
+                            NodeEvents);
+                    }
+
+                    _sceneTraverser =
+                        new SceneTraverser(
+                            this,
+                            NodeEvents,
+                            _nodeUpdateRegistry,
+                            _externalAssetLoader,
+                            _nodeHandleFactory,
+                            _geometryOperations);
+                }
 
                 return _sceneTraverser;
             }
@@ -329,279 +293,12 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (_initialized)
                 throw new InvalidOperationException("builders must be registered before init");
             
-            _builders.Add(builder);
+            _builderRegistry.Add(builder);
         }
 
         public void RemoveBuilder(INodeBuilder builder)
         {
-            _builders.Remove(builder);
-        }
-
-        private INodeBuilder GetBuilderForNode(Node node, in TraversalContext data)
-        {
-            // performance critical, do not change to foreach
-            for (var i = 0; i < _builders.Count; ++i)
-            {
-                var builder = _builders[i];
-
-                if (!builder.CanBuild(node, data.TraversalStateFlags, data.IntersectMask))
-                    continue;
-
-                return builder;
-            }
-
-            return null;
-        }
-
-        private void BuildNode(INodeBuilder builder, in TraversalContext data)
-        {
-            var priority = builder.Priority;
-            
-            // force immediate mode during asset phase (we might change this later, but for now it makes life simpler)
-            //if ((data.TraversalStateFlags & TraversalState.Asset) == TraversalState.Asset)
-            //    priority = BuildPriority.Immediate;
-
-            switch (priority)
-            {
-                case BuildPriority.Immediate:
-                    if (builder.Build(data.NodeHandle, data.ActiveStateNode))
-                        data.NodeHandle.builder = builder;
-                    break;
-                case BuildPriority.Low:
-
-                    // defer the build so that we can distribute the build process across multiple frames
-                    pendingBuilds.Enqueue(new BuildInfo()
-                    {
-                        Builder = builder,
-                        NodeHandle = data.NodeHandle,
-                        ActiveStateNode = data.ActiveStateNode,
-                        // when a node is recycled, the version is increased, we store the current version so that
-                        // we can detect if the node has already been removed when scheduled for build
-                        Version = data.NodeHandle.version,
-                    });
-                    break;
-                default:
-                    throw new NotImplementedException();
-            }
-        }
-
-        internal void RegisterNodeForUpdate(NodeHandle nodeHandle)
-        {
-            nodeHandle.updateTransform = true;
-            nodeHandle.inNodeUpdateList = true;
-            updateNodeObjects.AddLast(nodeHandle.gameObject);
-        }
-
-        internal void NotifyNewLoader(GameObject gameObject)
-        {
-            OnNewLoader?.Invoke(gameObject, false);
-        }
-
-        internal void NotifyNewLod(GameObject gameObject, bool isAsset)
-        {
-            OnNewLod?.Invoke(gameObject, isAsset);
-        }
-
-        internal GameObject ProcessRefNode(RefNode refNode, in TraversalContext data)
-        {
-            // mostly for debug purposes, will allow us to skip asset instancing
-            if (SceneTraverser.AssetPolicy.IsInstancingDisabled(Settings.Options))
-                return null;
-
-            // copy the state so that we can write to it
-            TraversalContext state = data;
-
-            // we dont expect RefNodes when traversing asset subtree or during instancing (i.e. nested assets)
-            System.Diagnostics.Debug.Assert(!state.TraversalStateFlags.HasFlag(TraversalState.Asset));
-            System.Diagnostics.Debug.Assert(!state.TraversalStateFlags.HasFlag(TraversalState.AssetInstance));
-
-            if (SceneTraverser.AssetPolicy.UsesLazyLoading(Settings.Options))
-            {
-                if (SceneTraverser.AssetPolicy.TryTakeDeferred(
-                    refNode.ReferenceNodeID,
-                    out DeferredAssetTraversal deferredTraversal))
-                {
-                    var assetContext = deferredTraversal.TraversalContext;
-                    var asset = SceneTraverser.Traverse(
-                        deferredTraversal.AssetNode,
-                        ref assetContext).GameObject;
-                    asset.transform.SetParent(deferredTraversal.TraversalContext.NodeHandle.transform);
-                }
-            }
-
-            // instruct native side to construct the instance
-            refNode.AttachNode();
-
-            // create a node handle for the ref node instance
-            state.NodeHandle = CreateNodeHandle(refNode, PoolObjectFeature.None);
-
-            // continue traversal with the instance flag set
-            state.TraversalStateFlags |= TraversalState.AssetInstance;
-
-            // traverse down the subgraph
-            TraverseChildren(refNode, in state);
-
-            // return the created gameobject for this instance
-            return state.NodeHandle.gameObject;
-        }
-
-        internal GameObject ProcessGeometry(Geometry geo, in TraversalContext data)
-        {
-            TraversalContext state = data;
-
-            bool isAssetInstance = (data.TraversalStateFlags & TraversalState.AssetInstance) == TraversalState.AssetInstance;
-            if (isAssetInstance)
-            {
-                // allocate node handle from the mesh pool and set node handle instance flag
-                state.NodeHandle = CreateNodeHandle(geo, PoolObjectFeature.StaticMesh);
-                state.NodeHandle.stateFlags |= NodeStateFlags.AssetInstance;
-
-                // build the geometry using the instance builder that will share mesh/material from prefab asset
-                BuildNode(_assetInstanceBuilder, state);
-            }
-            else
-            {
-                // find a builder for this type of geometry object
-                var builder = GetBuilderForNode(geo, in state);
-                if (builder != null)
-                {
-                    // allocate node handle using the builders pool
-                    state.NodeHandle = CreateNodeHandle(geo, builder.Feature);
-
-                    // check for individual state on the geometry node
-                    if (geo.HasState())
-                        state.ActiveStateNode = state.NodeHandle;
-
-                    // build the geometry, this can either be deferred or immediate
-                    BuildNode(builder, state);
-                }
-                else
-                {
-                    // we didnt find a geometry builder for this node, simply create an empty placeholder node
-                    state.NodeHandle = CreateNodeHandle(geo, PoolObjectFeature.None);
-                }
-
-                // if we are currently building an asset prefab, register this node so that the asset builder can
-                // use mesh/material when creating new instances
-                if ((state.TraversalStateFlags & TraversalState.Asset) == TraversalState.Asset)
-                    _assetInstanceBuilder.AddAssetPrefab(geo, state.NodeHandle);
-            }
-
-            // notify external systems about the new geometry node
-            switch (state.NodeHandle.featureKey)
-            {
-                case PoolObjectFeature.Terrain:
-                    OnNewTerrain?.Invoke(state.NodeHandle.gameObject, state.TraversalStateFlags.HasFlag(TraversalState.Asset));
-                    break;
-                case PoolObjectFeature.StaticMesh:
-                    OnNewGeometry?.Invoke(state.NodeHandle.gameObject, state.TraversalStateFlags.HasFlag(TraversalState.Asset));
-                    break;
-                default:
-                    break;
-            }
-            
-            
-
-            return state.NodeHandle.gameObject;
-        }
-
-        internal GameObject ProcessCrossboard(Crossboard crossboard, in TraversalContext data)
-        {
-            OnNewCrossboard?.Invoke(data.NodeHandle.gameObject, data.TraversalStateFlags.HasFlag(TraversalState.Asset));
-            return null;
-        }
-
-        internal void TraverseChildren(
-            Group node,
-            in TraversalContext context,
-            bool addActionInterfaces = false)
-        {
-            SceneTraverser.TraverseChildren(
-                node,
-                in context,
-                addActionInterfaces,
-                _actionReceiver);
-        }
-
-        internal NodeHandle CreateNodeHandle(Node node, PoolObjectFeature feature)
-        {
-            var nodeHandle = Allocate(feature, node);
-            // we only use the name inside editor to avoid allocations in runtime
-#if UNITY_EDITOR
-            nodeHandle.name = node.Name;
-            
-            if (string.IsNullOrEmpty(nodeHandle.name))
-                nodeHandle.name = node.GetType().Name;
-#endif
-            return nodeHandle;
-        }
-
-        private GameObject BeginTraverse(Node node,bool dynloaded=false)
-        {
-            System.Diagnostics.Debug.Assert(node != null && node.IsValid());
-
-            // We must be called in edit lock
-
-            // if dynloaded we should add actions for traverse here as we can be toggled on/off by loader (fancier look)
-
-            var data = new TraversalContext()
-            {
-                IntersectMask = node.IntersectMask,
-            };
-
-            return SceneTraverser.Traverse(node, ref data).GameObject;
-        }
-
-        internal void ProcessExternalReference(
-            ExtRef node,
-            GameObject gameObject)
-        {
-            var info = new AssetLoadInfo(gameObject, node.ResourceURL, node.ObjectID);
-            pendingAssetLoads.Push(info);
-        }
-
-        private IEnumerator AssetLoader()
-        {
-            while (true)
-            {
-                if (pendingAssetLoads.Count > 0)
-                {
-                    AssetLoadInfo info = pendingAssetLoads.Pop();
-
-                    AssetBundle assetBundle;
-
-                    if (!currentAssetBundles.TryGetValue(info.resource_url, out assetBundle))
-                    {
-                        UnityEngine.Networking.UnityWebRequest request = UnityWebRequestAssetBundle.GetAssetBundle(info.resource_url, 0);
-
-                        yield return request.SendWebRequest();
-
-                        assetBundle = DownloadHandlerAssetBundle.GetContent(request);
-
-                        if (assetBundle)
-                            currentAssetBundles.Add(info.resource_url, assetBundle);
-                    }
-
-                    if (assetBundle != null)
-                    {
-
-                        GameObject extRefObject = assetBundle.LoadAsset<GameObject>(info.object_id);
-
-                        if (extRefObject != null)
-                        {
-                            GameObject instance = Instantiate(extRefObject);
-
-                            if (instance != null)
-                            {
-                                instance.name = info.object_id;
-                                instance.transform.SetParent(info.parent.transform, false);
-                            }
-                        }
-                    }
-                }
-
-                yield return null;
-            }
+            _builderRegistry.Remove(builder);
         }
 
         // The LoadMap function takes an URL and loads the map into GizmoSDK native db
@@ -660,7 +357,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 #endif
 
                     _root = new GameObject("root");
-                    GameObject scene = BeginTraverse(MapControl.SystemMap.CurrentMap);
+                    GameObject scene = SceneTraverser.Begin(MapControl.SystemMap.CurrentMap);
 
                     if (scene != null)
                         scene.transform.SetParent(_root.transform, false);
@@ -705,27 +402,11 @@ namespace Saab.Foundation.Unity.MapStreamer
             try // We are now locked in edit
             {
 
-                foreach (var p in pendingLoaders)
-                {
-                    p.loader?.Dispose();
-                    p.node?.Dispose();
-                }
-
-                pendingLoaders.Clear();
-                activePendingLoaders.Clear();
-
-                foreach (var p in pendingActivations)
-                {
-                    p.node?.Dispose();
-                }
-
-                pendingActivations.Clear();
+                _dynamicNodeLoads?.Reset();
 
                 // allow builders to perform custom clean up
-                foreach (var builder in _builders)
-                    builder.Reset();
-
-                _assetInstanceBuilder.Reset();
+                _builderRegistry.Reset();
+                _geometryOperations?.Reset();
 
                 if (_root)
                 {
@@ -744,7 +425,9 @@ namespace Saab.Foundation.Unity.MapStreamer
                 SceneTraverser.AssetPolicy.ClearDeferred();
 
                 // clear any pending builds
-                pendingBuilds.Clear();
+                _buildScheduler.Clear();
+                _nodeUpdateRegistry.Clear();
+                _externalAssetLoader.Clear();
 
                 MapControl.SystemMap.Reset();
             }
@@ -760,9 +443,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             // initialize node builders
             foreach (var builder in Builders)
-                _builders.Add(builder);
+                _builderRegistry.Add(builder);
 
-            if (_builders.Count == 0)
+            if (_builderRegistry.Count == 0)
                 Message.Send("SceneManager", MessageLevel.WARNING, "no node builder registered");
             
 
@@ -792,7 +475,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             // init allocator prefab for logical objects
             _poolPrefabs[0] = CreateAllocatorPrefabForBuilder(null);
 
-            foreach (var builder in _builders)
+            foreach (var builder in _builderRegistry)
             {
                 var idx = (byte)builder.Feature;
                 if (_free[idx] == null)
@@ -818,11 +501,12 @@ namespace Saab.Foundation.Unity.MapStreamer
         
 
 
-            // Setup internal subscription events
-            _actionReceiver = new NodeAction("DynamicLoadManager");
-            _actionReceiver.OnAction += ActionReceiver_OnAction;
-
-            DynamicLoader.OnDynamicLoad += DynamicLoader_OnDynamicLoad;
+            _dynamicNodeLoads = new DynamicNodeLoadCoordinator(
+                SceneTraverser.Begin,
+                UnloadHierarchy,
+                Free);
+            _dynamicNodeLoads.Subscribe();
+            SceneTraverser.SetActionReceiver(_dynamicNodeLoads.ActionReceiver);
 
             
             NodeLock.WaitLockEdit();
@@ -867,7 +551,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             DynamicLoaderManager.StartManager();
 
             // Start coroutines for asset loading
-            StartCoroutine(AssetLoader());
+            StartCoroutine(_externalAssetLoader.Process());
 
             return true;
         }
@@ -898,10 +582,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             ResetMap();
 
-            // Remove actions
-            DynamicLoader.OnDynamicLoad -= DynamicLoader_OnDynamicLoad;
-            _actionReceiver.OnAction -= ActionReceiver_OnAction;
-
             NodeLock.WaitLockEdit();
 
             try // We are now locked in edit
@@ -917,15 +597,15 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _native_scene.Dispose();
                 _native_scene = null;
 
-
-                _actionReceiver.Dispose();
-                _actionReceiver = null;
-
             }
             finally
             {
                 NodeLock.UnLock();
             }
+
+            _dynamicNodeLoads?.Dispose();
+            _dynamicNodeLoads = null;
+            SceneTraverser.SetActionReceiver(null);
 
             // Dont do this as Unity wants to keep modules loaded
             //// Drop platform streamer
@@ -955,22 +635,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         }
 
 
-        private void ActionReceiver_OnAction(NodeAction sender, NodeActionEvent action, Context context, NodeActionProvider trigger, TraverseAction traverser, IntPtr userdata)
-        {
-            // Locked in edit or render (render) by caller
-
-            if ((action == NodeActionEvent.IS_TRAVERSABLE) || 
-                (action == NodeActionEvent.IS_NOT_TRAVERSABLE))
-            {
-                pendingActivations.Add(new ActivationInfo(action, trigger as Node));
-            }
-            else
-                trigger?.ReleaseNoDelete();      // We are getting ref counts on objects in scene graph and these need to be released immediately
-
-            traverser?.ReleaseNoDelete();
-            context?.ReleaseNoDelete();
-        }
-
         private void Start()
         {
             Init();
@@ -997,61 +661,13 @@ namespace Saab.Foundation.Unity.MapStreamer
             Uninitialize();
         }
                
-        private void DynamicLoader_OnDynamicLoad(DynamicLoadingState state, DynamicLoader loader, Node node)
-        {
-            // Locked in edit or render (render) by caller
-
-            if (state == DynamicLoadingState.LOADED || state == DynamicLoadingState.UNLOADED)
-            {
-                if (!activePendingLoaders.ContainsKey(loader.GetNativeReference()))
-                {
-                    NodeLoadInfo info = new NodeLoadInfo(state, loader, node);
-
-                    pendingLoaders.Add(info);       // Sorted order
-                    activePendingLoaders.Add(loader.GetNativeReference(), info);    // Lookup
-                }
-                else
-                {
-                    // Balanced add/remove that will cancel traversal or delete
-
-                    for (int i = pendingLoaders.Count - 1; i >= 0; i--)
-                    {
-                        if (pendingLoaders[i].loader.GetNativeReference() == loader.GetNativeReference())
-                        {
-                            pendingLoaders.RemoveAt(i);
-                            break;
-                        }
-                    }
-
-                    // remove reference
-                    activePendingLoaders.Remove(loader.GetNativeReference());
-                }
-
-            }
-            //else if (state == DynamicLoadingState.REQUEST_LOAD || state == DynamicLoadingState.REQUEST_UNLOAD || state == DynamicLoadingState.REQUEST_LOAD_CANCEL || state == DynamicLoadingState.REQUEST_LOAD_CANCEL)
-            //{
-            //    loader?.ReleaseNoDelete();      // Same here. We are getting refs to objects in scene graph that we shouldnt release in GC
-            //    node?.ReleaseNoDelete();
-            //}
-            //else if (state == DynamicLoadingState.IN_LOADING)
-            //{
-            //    loader?.ReleaseNoDelete();      // Same here. We are getting refs to objects in scene graph that we shouldnt release in GC
-            //    node?.ReleaseNoDelete();
-            //}
-            else
-            {
-                loader?.ReleaseNoDelete();      // Same here. We are getting refs to objects in scene graph that we shouldnt release in GC
-                node?.ReleaseNoDelete();
-            }
-        }
-
         private void ProcessPendingUpdatesPreTraversal()
         {
             // We must be called in edit lock
 
             // Process changes of the scenegraph
             _profilerMarkerTraverse.Begin();
-            ProcessPendingLoaders();
+            _dynamicNodeLoads.ProcessLoads();
             _profilerMarkerTraverse.End();
         }
 
@@ -1061,7 +677,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             #region Activate/Deactivate GameObjects based on scenegraph -----------------------------------------------------
 
-            ProcessPendingActivations();
+            _dynamicNodeLoads.ProcessActivations();
 
             #endregion
 
@@ -1078,117 +694,15 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (remainingBuildTime < TimeSpan.FromSeconds(Settings.MinBuildTime))
                 remainingBuildTime = TimeSpan.FromSeconds(Settings.MinBuildTime);
 
-            ProcessPendingBuilders(remainingBuildTime);
+            _buildScheduler.Process(remainingBuildTime);
 
             #endregion
         }
 
-        private void ProcessPendingLoaders()
-        {
-            foreach (NodeLoadInfo nodeLoadInfo in pendingLoaders)
-            {
-                if (nodeLoadInfo.state == DynamicLoadingState.LOADED)   // We got a callback from dyn loader that we were loaded or unloaded
-                {
-                    unTransform transform = NodeUtils.FindFirstGameObjectTransformUnsafe(nodeLoadInfo.loader.GetNativeReference());
-
-                    if (transform == null)              // We have been unloaded or not registered
-                        continue;
-
-                    if (transform.childCount != 0)       // We have already a child and our sub graph was loaded
-                        continue;
-
-                    // TODO: Active state node can be further up the tree and should be located and passed here
-                    GameObject go = BeginTraverse(nodeLoadInfo.node,true);       // Build sub graph as result of dynamic loader
-
-                    if (go != null)
-                        go.transform.SetParent(transform, false);               // Connect to our parent
-
-                }
-                else if (nodeLoadInfo.state == DynamicLoadingState.UNLOADED)
-                {
-                    if (NodeUtils.FindGameObjectsUnsafe(
-                        nodeLoadInfo.loader.GetNativeReference(), out List<GameObject> list))
-                    {
-                        foreach (var go in list)
-                        {
-                            var tr = go.transform;
-                            for (var i = tr.childCount - 1; i >= 0; i--)
-                            {
-                                var child = tr.GetChild(i);
-                                //We need to unload all linked go in hierarchy
-                                UnloadHierarchy(child);
-                                Free(child);
-                            }
-                        }
-                    }
-                }
-            }
-
-            pendingLoaders.Clear();         // Clear List
-            activePendingLoaders.Clear();   // Clear index
-        }
-
-        private void ProcessPendingActivations()
-        {
-            foreach (ActivationInfo activationInfo in pendingActivations)
-            {
-                List<GameObject> list;  // We need to activate the correct nodes
-
-                if (NodeUtils.FindGameObjectsUnsafe(activationInfo.node.GetNativeReference(), out list))
-                {
-                    foreach (GameObject obj in list)
-                    {
-                        if (activationInfo.state == NodeActionEvent.IS_TRAVERSABLE)
-                            obj.SetActive(true);
-                        else if (activationInfo.state == NodeActionEvent.IS_NOT_TRAVERSABLE)
-                            obj.SetActive(false);
-                    }
-                }
-                else 
-                {
-                    Message.Send(ID, MessageLevel.DEBUG, $"Got Activation {activationInfo.state} for missing node");
-                }
-            }
-
-            pendingActivations.Clear();
-        }
-
-        private void ProcessPendingBuilders(TimeSpan maxBuildTime)
-        {
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-            
-            while ((pendingBuilds.Count > 0) && (timer.Elapsed < maxBuildTime))
-            {
-                var buildInfo = pendingBuilds.Dequeue();
-
-                var nodeHandle = buildInfo.NodeHandle;
-                if (buildInfo.Version != nodeHandle.version)
-                    continue;
-
-                var activeStateNode = buildInfo.ActiveStateNode;
-                if (activeStateNode != null && activeStateNode.node == null)
-                    continue;
-
-                if (buildInfo.Builder.Build(nodeHandle, activeStateNode))
-                    buildInfo.NodeHandle.builder = buildInfo.Builder;
-                else
-                {
-#if DEBUG
-                    Debug.LogError("build failed");
-#endif
-                }
-            }
-        }
-        
         private void UpdateNodeInternals()
         {
             // Only called if SceneManagerCamera is not null
-            foreach (GameObject go in updateNodeObjects)
-            {
-                NodeHandle h = go.GetComponent<NodeHandle>();
-
-                h.UpdateNodeInternals();
-            }
+            _nodeUpdateRegistry.UpdateNodes();
         }
 
         // Update is called once per frame
@@ -1260,7 +774,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return;
 
 
-            if (activePendingLoaders.Count > 0) // Check if we got a mismatch in updates
+            if (_dynamicNodeLoads.HasPendingLoads) // Check if we got a mismatch in updates
             {
                 NodeLock.UnLock(); // Unlock render
                 Message.Send(ID, MessageLevel.FATAL, "Mismatch in virtual context (loaded/unloaded data)");
@@ -1381,7 +895,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             {
                 // remove from update list
                 if (nodeHandle.inNodeUpdateList)
-                    updateNodeObjects.Remove(transform.gameObject);
+                    _nodeUpdateRegistry.Unregister(nodeHandle);
 
                 // remove from registry
                 if (nodeHandle.inNodeUtilsRegistry)
@@ -1492,10 +1006,10 @@ namespace Saab.Foundation.Unity.MapStreamer
                 switch (nodeHandle.featureKey)
                 {
                     case PoolObjectFeature.Terrain:
-                        OnRemoveTerrain?.Invoke(go);
+                        NodeEvents.NotifyTerrainRemoved(go);
                         break;
                     case PoolObjectFeature.StaticMesh:
-                        OnRemoveGeometry?.Invoke(go);
+                        NodeEvents.NotifyGeometryRemoved(go);
                         break;
                     default:
                         break;
@@ -1504,7 +1018,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             nodeHandle.Recycle(_textureManager);
 
-            OnEnterPool?.Invoke(go);
+            NodeEvents.NotifyEnteredPool(go);
         }
     }
 

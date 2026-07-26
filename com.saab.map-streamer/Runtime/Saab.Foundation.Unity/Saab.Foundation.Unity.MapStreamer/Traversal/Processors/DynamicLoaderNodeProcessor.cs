@@ -2,13 +2,14 @@
 
 using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Utility.Unity.NodeUtils;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
     internal sealed class DynamicLoaderNodeProcessor : NodeProcessor<DynamicLoader>
     {
-        public DynamicLoaderNodeProcessor(SceneManager sceneManager) : base(sceneManager) { }
+        public DynamicLoaderNodeProcessor(NodeEvents nodeEvents) : base(nodeEvents) { }
 
         protected override TraversalResult Process(
             DynamicLoader node,
@@ -22,7 +23,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
                 context.NodeHandle.gameObject);
 
             context.NodeHandle.inNodeUtilsRegistry = true;
-            SceneManager.NotifyNewLoader(context.NodeHandle.gameObject);
+            NodeEvents.NotifyLoaderCreated(context.NodeHandle.gameObject, false);
 
             return TraversalResult.Created(context.NodeHandle.gameObject);
         }

@@ -16,6 +16,7 @@
 using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Utility.GfxCaps;
 using System;
 using System.Collections;
@@ -71,6 +72,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
     public class FoliageModule : MonoBehaviour
     {
         public SceneManager SceneManager;
+        public NodeEvents NodeEvents;
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
 
@@ -161,9 +163,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             _mappingTable = TerrainMapping.MapFeatureData();
 
             StartCoroutine(WaitForDepth());
-            SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
+
+            if (NodeEvents == null)
+                NodeEvents = FindObjectOfType<NodeEvents>();
+
+            if (NodeEvents != null)
+            {
+                NodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
+                NodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
+            }
+
             SceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
-            SceneManager.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
 
             for (int i = 0; i < Features.Count; i++)
             {
@@ -318,7 +328,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 _frustum[i].w = _frustrumPlanes[i].distance;
             }
         }
-        private void SceneManager_OnRemoveTerrain(GameObject go)
+        private void NodeEvents_OnTerrainRemoved(GameObject go)
         {
             foreach (var set in Features)
             {
@@ -332,7 +342,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public int FrameCount { get; set; }
         }
 
-        private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)
+        private void NodeEvents_OnTerrainCreated(GameObject go, bool isAsset)
         {
             if (isAsset)
                 return;
@@ -427,6 +437,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
+            if (NodeEvents != null)
+            {
+                NodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
+                NodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
+            }
+
             foreach (var set in Features)
             {
                 set?.Dispose();

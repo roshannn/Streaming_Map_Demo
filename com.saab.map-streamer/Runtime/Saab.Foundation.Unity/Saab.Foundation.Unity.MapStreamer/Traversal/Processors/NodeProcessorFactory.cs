@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using GizmoSDK.Gizmo3D;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
@@ -11,18 +12,20 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         private readonly Dictionary<Type, NodeProcessor> _processors =
             new Dictionary<Type, NodeProcessor>();
 
-        public NodeProcessorFactory(SceneManager sceneManager)
+        public NodeProcessorFactory(
+            NodeProcessorComposer composer,
+            NodeEvents nodeEvents)
         {
-            Register<RefNode>(new RefNodeProcessor(sceneManager));
-            Register<Geometry>(new GeometryNodeProcessor(sceneManager));
-            Register<Crossboard>(new CrossboardNodeProcessor(sceneManager));
-            Register<Roi>(new RoiProcessor(sceneManager));
-            Register<RoiNode>(new RoiNodeProcessor(sceneManager));
-            Register<Transform>(new TransformNodeProcessor(sceneManager));
-            Register<DynamicLoader>(new DynamicLoaderNodeProcessor(sceneManager));
-            Register<Lod>(new LodNodeProcessor(sceneManager));
-            Register<Group>(new GroupNodeProcessor(sceneManager));
-            Register<ExtRef>(new ExternalReferenceNodeProcessor(sceneManager));
+            Register<RefNode>(composer.Compose(new RefNodeProcessor(nodeEvents)));
+            Register<Geometry>(composer.Compose(new GeometryNodeProcessor(nodeEvents)));
+            Register<Crossboard>(composer.Compose(new CrossboardNodeProcessor(nodeEvents)));
+            Register<Roi>(composer.Compose(new RoiProcessor(nodeEvents)));
+            Register<RoiNode>(composer.Compose(new RoiNodeProcessor(nodeEvents)));
+            Register<Transform>(composer.Compose(new TransformNodeProcessor(nodeEvents)));
+            Register<DynamicLoader>(composer.Compose(new DynamicLoaderNodeProcessor(nodeEvents)));
+            Register<Lod>(composer.Compose(new LodNodeProcessor(nodeEvents)));
+            Register<Group>(composer.Compose(new GroupNodeProcessor(nodeEvents)));
+            Register<ExtRef>(composer.Compose(new ExternalReferenceNodeProcessor(nodeEvents)));
         }
 
         public NodeProcessor Resolve(Node node)

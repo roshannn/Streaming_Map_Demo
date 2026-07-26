@@ -2,18 +2,19 @@
 
 using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
     internal abstract class NodeProcessor<TNode> : NodeProcessor
         where TNode : Node
     {
-        protected NodeProcessor(SceneManager sceneManager)
+        protected NodeProcessor(NodeEvents nodeEvents)
         {
-            SceneManager = sceneManager;
+            NodeEvents = nodeEvents;
         }
 
-        protected SceneManager SceneManager { get; }
+        protected NodeEvents NodeEvents { get; }
 
         public sealed override TraversalResult Process(
             Node node,

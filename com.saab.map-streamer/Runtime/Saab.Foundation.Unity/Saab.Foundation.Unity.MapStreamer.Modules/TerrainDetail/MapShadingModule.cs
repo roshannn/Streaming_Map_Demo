@@ -19,6 +19,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 using Saab.Foundation.Unity.MapStreamer.Utils;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
@@ -72,7 +73,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class MapShadingModule : MonoBehaviour
     {
-        public SceneManager SceneManager;
+        public NodeEvents NodeEvents;
 
         public bool EnableDetailedTextures
         {
@@ -127,7 +128,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void Awake()
         {
-            if (SceneManager == null)
+            if (NodeEvents == null)
+                NodeEvents = FindObjectOfType<NodeEvents>();
+
+            if (NodeEvents == null)
                 return;
 
             _enableDetailedTextures = GfxCaps.CurrentCaps.HasFlag(Capability.UseTerrainDetailTextures);
@@ -145,13 +149,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
+            if (NodeEvents != null)
+                NodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
+
             if (_mappingBuffer != null)
                 _mappingBuffer.Release();
         }
 
         public void InitializeModule()
         {
-            if (SceneManager && _enableDetailedTextures)
+            if (NodeEvents && _enableDetailedTextures)
             {
                 InitMapModules();
                 InitDetailTexturing();
@@ -160,7 +167,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void InitMapModules()
         {
-            SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
+            NodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
         }
 
         private void InitDetailTexturing()
@@ -217,7 +224,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)
+        private void NodeEvents_OnTerrainCreated(GameObject go, bool isAsset)
         {
             if (!go.TryGetComponent<NodeHandle>(out var nodehandle))
                 return;

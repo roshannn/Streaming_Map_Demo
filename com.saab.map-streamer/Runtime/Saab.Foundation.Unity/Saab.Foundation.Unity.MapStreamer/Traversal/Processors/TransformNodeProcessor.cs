@@ -2,13 +2,20 @@
 
 using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using gzTransform = GizmoSDK.Gizmo3D.Transform;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
-    internal sealed class TransformNodeProcessor : NodeProcessor<gzTransform>
+    internal sealed class TransformNodeProcessor :
+        NodeProcessor<gzTransform>,
+        IRequiresDependency<IHierarchyTraversal>
     {
-        public TransformNodeProcessor(SceneManager sceneManager) : base(sceneManager) { }
+        private IHierarchyTraversal _hierarchy;
+
+        public TransformNodeProcessor(NodeEvents nodeEvents) : base(nodeEvents) { }
+
+        public void Inject(IHierarchyTraversal dependency) => _hierarchy = dependency;
 
         protected override TraversalResult Process(
             gzTransform node,
@@ -16,7 +23,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         {
             var gameObject = context.NodeHandle.gameObject;
             NodeTransformApplicator.Apply(node, gameObject.transform);
-            SceneManager.TraverseChildren(node, in context);
+            _hierarchy.TraverseChildren(node, in context);
 
             return TraversalResult.Created(gameObject);
         }

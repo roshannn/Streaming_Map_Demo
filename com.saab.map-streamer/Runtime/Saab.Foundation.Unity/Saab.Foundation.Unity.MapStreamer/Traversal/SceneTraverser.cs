@@ -3,27 +3,65 @@
 using GizmoSDK.GizmoBase;
 using GizmoSDK.Gizmo3D;
 
+using UnityEngine;
+
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal
 {
-    internal sealed class SceneTraverser
+    internal sealed class SceneTraverser : IHierarchyTraversal
     {
         private readonly SceneManager _sceneManager;
         private readonly IntersectionTraversalFilter _intersectionFilter;
         private readonly NodeProcessorFactory _processorFactory;
         private readonly HierarchyTraversalHelper _hierarchyHelper;
+        private readonly INodeHandleFactory _nodeHandleFactory;
+        private NodeAction _actionReceiver;
 
-        public SceneTraverser(SceneManager sceneManager)
+        public SceneTraverser(
+            SceneManager sceneManager,
+            NodeEvents nodeEvents,
+            INodeUpdateRegistry nodeUpdateRegistry,
+            IExternalAssetQueue externalAssetQueue,
+            INodeHandleFactory nodeHandleFactory,
+            IGeometryNodeOperations geometryOperations)
         {
             _sceneManager = sceneManager;
             _intersectionFilter = new IntersectionTraversalFilter();
+            _nodeHandleFactory = nodeHandleFactory;
             AssetPolicy = new AssetTraversalPolicy();
-            _processorFactory = new NodeProcessorFactory(sceneManager);
             _hierarchyHelper = new HierarchyTraversalHelper(this);
+
+            var referenceOperations = new ReferenceNodeOperations(
+                this,
+                AssetPolicy,
+                nodeHandleFactory,
+                () => sceneManager.Settings.Options);
+
+            var composer = new NodeProcessorComposer(
+                this,
+                nodeUpdateRegistry,
+                externalAssetQueue,
+                referenceOperations,
+                geometryOperations);
+
+            _processorFactory = new NodeProcessorFactory(composer, nodeEvents);
         }
 
         public AssetTraversalPolicy AssetPolicy { get; }
+
+        public GameObject Begin(Node node)
+        {
+            System.Diagnostics.Debug.Assert(node != null && node.IsValid());
+
+            var context = new TraversalContext
+            {
+                IntersectMask = node.IntersectMask,
+            };
+
+            return Traverse(node, ref context).GameObject;
+        }
 
         public TraversalResult Traverse(Node node, ref TraversalContext context)
         {
@@ -48,7 +86,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
                 return processor.Process(node, ref context);
 
             context.NodeHandle =
-                _sceneManager.CreateNodeHandle(node, PoolObjectFeature.None);
+                _nodeHandleFactory.Create(node, PoolObjectFeature.None);
 
             if (node.HasState())
                 context.ActiveStateNode = context.NodeHandle;
@@ -64,17 +102,21 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             return TraversalResult.Created(gameObject);
         }
 
+        public void SetActionReceiver(NodeAction actionReceiver)
+        {
+            _actionReceiver = actionReceiver;
+        }
+
         public void TraverseChildren(
             Group group,
             in TraversalContext context,
-            bool addActionInterfaces,
-            NodeAction actionReceiver)
+            bool addActionInterfaces = false)
         {
             _hierarchyHelper.TraverseChildren(
                 group,
                 in context,
                 addActionInterfaces,
-                actionReceiver);
+                _actionReceiver);
         }
     }
 }

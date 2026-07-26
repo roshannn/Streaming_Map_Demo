@@ -2,12 +2,20 @@
 
 using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
-    internal sealed class RefNodeProcessor : NodeProcessor<RefNode>
+    internal sealed class RefNodeProcessor :
+        NodeProcessor<RefNode>,
+        IRequiresDependency<IReferenceNodeOperations>
     {
-        public RefNodeProcessor(SceneManager sceneManager) : base(sceneManager) { }
+        private IReferenceNodeOperations _operations;
+
+        public RefNodeProcessor(NodeEvents nodeEvents) : base(nodeEvents) { }
+
+        public void Inject(IReferenceNodeOperations dependency) =>
+            _operations = dependency;
 
         public override bool RequiresDefaultNodeHandle => false;
 
@@ -15,7 +23,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             RefNode node,
             ref TraversalContext context)
         {
-            var gameObject = SceneManager.ProcessRefNode(node, in context);
+            var gameObject = _operations.Process(node, in context);
             return gameObject != null
                 ? TraversalResult.Created(gameObject)
                 : TraversalResult.Skipped();
