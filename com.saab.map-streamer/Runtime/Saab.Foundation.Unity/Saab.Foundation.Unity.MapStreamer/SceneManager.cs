@@ -45,15 +45,11 @@ using UnityEngine;
 using GizmoSDK.GizmoBase;
 using GizmoSDK.Gizmo3D;
 
-// Fix some conflicts between unity and Gizmo namespaces
-using gzCamera = GizmoSDK.Gizmo3D.Camera;
-using gzTexture = GizmoSDK.Gizmo3D.Texture;
-
-
 // Map utility
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
@@ -136,7 +132,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     public class SceneManager : MonoBehaviour
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
-        public ISceneManagerCamera  SceneManagerCamera;
+        public ISceneManagerCamera  SceneManagerCamera { get; private set; }
         public string               MapUrl { get; private set; }
         public NodeBuilderBase[] Builders;
 
@@ -156,9 +152,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         #region ------------- Privates ----------------
 
-        private Scene _native_scene;
-        private gzCamera _native_camera;
-        private Context _native_context;
         private CullTraverseAction _native_traverse_action;
         private GameObject _root;
 
@@ -193,6 +186,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         private NodeHierarchyUnloader _hierarchyUnloader;
         private ITraversalConfiguration _traversalConfiguration;
         private StreamingPipeline _streamingPipeline;
+        private NativeSceneResources _nativeScene;
 
         [Inject]
         private void Construct(
@@ -210,7 +204,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             NodeHierarchyUnloader hierarchyUnloader,
             ITraversalConfiguration traversalConfiguration,
             StreamingPipeline streamingPipeline,
-            MapConfig mapConfig)
+            NativeSceneResources nativeScene,
+            MapConfig mapConfig,
+            ISceneManagerCamera sceneManagerCamera)
         {
             _nodeUpdateRegistry = nodeUpdateRegistry;
             _externalAssetLoader = externalAssetLoader;
@@ -226,6 +222,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             _hierarchyUnloader = hierarchyUnloader;
             _traversalConfiguration = traversalConfiguration;
             _streamingPipeline = streamingPipeline;
+            _nativeScene = nativeScene;
+            SceneManagerCamera = sceneManagerCamera;
             MapUrl = mapConfig.MapUrl;
         }
 
@@ -308,10 +306,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
                 if (node != null)
                 {
-                    _native_scene.AddNode(MapControl.SystemMap.CurrentMap);
-#if DEBUG
-                    _native_scene.Debug();
-#endif
+                    _nativeScene.AddNode(MapControl.SystemMap.CurrentMap);
 
                     _root = new GameObject("root");
                     GameObject scene = _sceneTraverser.Begin(MapControl.SystemMap.CurrentMap);
@@ -373,7 +368,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                     _root = null;
                 }
 
-                _native_scene?.RemoveAllNodes();
+                _nativeScene?.ClearScene();
 
                 _textureManager.Clear();
                 _materialManager.Clear();
@@ -449,24 +444,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             try // We are now locked in edit
             {
-                // Camera setup
-                _native_camera = new PerspCamera("Test");
-                _native_camera.RoiPosition = true;
-                MapControl.SystemMap.Camera = _native_camera;
-
-                // Top scene
-                _native_scene = new Scene("Scene");
-                _native_camera.Scene = _native_scene;
-
-                // Top context
-                _native_context = new Context();
-
-#if DEBUG_CAMERA
-
-                // If we want to visualize debug 3D
-                _native_camera.Debug(_native_context);      // Enable to debug view
-
-#endif // DEBUG_CAMERA
+                _nativeScene.Initialize();
 
                 // Default travrser
                 _native_traverse_action = new CullTraverseAction();
@@ -507,15 +485,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             try // We are now locked in edit
             {
 
-                _native_camera.Debug(_native_context, false);
-                _native_camera.Dispose();
-                _native_camera = null;
-
-                _native_context.Dispose();
-                _native_context = null;
-
-                _native_scene.Dispose();
-                _native_scene = null;
+                _nativeScene.Dispose();
 
             }
             finally
@@ -598,8 +568,8 @@ namespace Saab.Foundation.Unity.MapStreamer
                 var frame = new StreamingFrameContext(
                     SceneManagerCamera,
                     SceneManagerCamera.Camera,
-                    _native_camera,
-                    _native_context,
+                    _nativeScene.Camera,
+                    _nativeScene.Context,
                     _native_traverse_action,
                     Settings,
                     NotifyPreTraverse,

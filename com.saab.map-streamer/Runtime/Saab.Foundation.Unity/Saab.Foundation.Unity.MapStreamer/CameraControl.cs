@@ -175,16 +175,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             return Quaternion.Euler(0, rotationSpeed * GetDeltaTime(), 0);
         }
 
-        public void UpdateMoveCamera(float forward, float right, float up, float pan, float tilt, bool lockOtherInput = true)
-        {
-            _autoMovement.forward = forward;
-            _autoMovement.right = right;
-            _autoMovement.up = up;
-            _autoMovement.pan = pan;
-            _autoMovement.tilt = tilt;
-            _inputLocked = lockOtherInput;
-        }
-
         private void UpdateShaderPos()
         {
             var pos = GlobalPosition;

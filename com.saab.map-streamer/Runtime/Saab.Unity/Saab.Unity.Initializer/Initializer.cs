@@ -172,10 +172,6 @@ namespace Saab.Unity.Initializer
 
 #endregion
 
-            // Set up scene manager camera
-
-            _sceneManager.SceneManagerCamera = _cameraControl;
-
         }
 
         private void Message_OnMessage(string sender, MessageLevel level, string message)

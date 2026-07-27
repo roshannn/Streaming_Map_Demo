@@ -3,6 +3,7 @@ using System;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
@@ -30,7 +31,9 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             builder.RegisterComponentInHierarchy<NodeEvents>();
             builder.RegisterComponentInHierarchy<SceneManager>();
-            builder.RegisterComponentInHierarchy<CameraControl>();
+            builder.RegisterComponentInHierarchy<CameraControl>()
+                .AsSelf()
+                .As<ISceneManagerCamera>();
             builder.RegisterComponentInHierarchy<Initializer>();
             builder.RegisterComponentInHierarchy<MapShadingModule>();
             builder.RegisterComponentInHierarchy<FoliageModule>();
@@ -55,6 +58,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<NodeHierarchyUnloader>(Lifetime.Scoped);
             builder.Register<SceneTraverser>(Lifetime.Scoped);
             builder.Register<DynamicNodeLoadCoordinator>(Lifetime.Scoped);
+            builder.Register<NativeSceneResources>(Lifetime.Scoped);
             builder.Register<StreamingLock>(Lifetime.Scoped)
                 .As<IStreamingLock>();
             builder.Register<StreamingPipeline>(Lifetime.Scoped);
