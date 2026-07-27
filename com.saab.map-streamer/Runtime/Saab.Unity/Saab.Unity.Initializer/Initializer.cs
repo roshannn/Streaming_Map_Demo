@@ -188,11 +188,21 @@ namespace Saab.Unity.Initializer
                 case MessageLevel.PERF_DEBUG:
                 case MessageLevel.DEBUG:
                 case MessageLevel.TRACE_DEBUG:
-                    Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, message);
+                    Debug.LogFormat(
+                        LogType.Log,
+                        LogOption.NoStacktrace,
+                        null,
+                        "{0}",
+                        message);
                     break;
 
                 case MessageLevel.NOTICE:
-                    Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, message);
+                    Debug.LogFormat(
+                        LogType.Log,
+                        LogOption.NoStacktrace,
+                        null,
+                        "{0}",
+                        message);
                     break;
 
                 case MessageLevel.WARNING:
@@ -208,7 +218,12 @@ namespace Saab.Unity.Initializer
                     break;
 
                 case MessageLevel.ALWAYS:
-                    Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, message);
+                    Debug.LogFormat(
+                        LogType.Log,
+                        LogOption.NoStacktrace,
+                        null,
+                        "{0}",
+                        message);
                     break;
             }
         }

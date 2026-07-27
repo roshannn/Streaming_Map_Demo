@@ -7,6 +7,7 @@ using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Configuration;
+using Saab.Foundation.Unity.MapStreamer.Native;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
@@ -32,6 +33,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
 
         private readonly IStreamingLock _streamingLock;
+        private readonly NativeSceneSession _nativeSceneSession;
         private readonly MapStreamerSettings _settingsAsset;
         private readonly DynamicLoaderRuntime _dynamicLoaderRuntime;
         private readonly ITraversalConfiguration _traversalConfiguration;
@@ -48,6 +50,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
         public StreamingPipeline(
             IStreamingLock streamingLock,
+            NativeSceneSession nativeSceneSession,
             MapStreamerSettings settingsAsset,
             DynamicLoaderRuntime dynamicLoaderRuntime,
             ITraversalConfiguration traversalConfiguration,
@@ -58,6 +61,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             INodeUpdateRegistry nodeUpdates)
         {
             _streamingLock = streamingLock;
+            _nativeSceneSession = nativeSceneSession;
             _settingsAsset = settingsAsset;
             _dynamicLoaderRuntime = dynamicLoaderRuntime;
             _traversalConfiguration = traversalConfiguration;
@@ -92,11 +96,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             }
 
             _traversalConfiguration.Update(_settings);
-            _dynamicNodeLoads.Subscribe();
-            _sceneTraverser.SetActionReceiver(
-                _dynamicNodeLoads.ActionReceiver);
-            _dynamicLoaderRuntime.Start(_settings.DynamicLoaders);
-            _initialized = true;
+            try
+            {
+                _dynamicNodeLoads.Subscribe();
+                _sceneTraverser.SetActionReceiver(
+                    _dynamicNodeLoads.ActionReceiver);
+                _dynamicLoaderRuntime.Start(_settings.DynamicLoaders);
+                _initialized = true;
+            }
+            catch
+            {
+                try
+                {
+                    _dynamicLoaderRuntime.Stop();
+                }
+                finally
+                {
+                    _dynamicNodeLoads.Unsubscribe();
+                    _sceneTraverser.SetActionReceiver(null);
+                }
+
+                throw;
+            }
         }
 
         public void Shutdown()
@@ -104,15 +125,22 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             if (!_initialized)
                 return;
 
-            _dynamicLoaderRuntime.Stop();
-            _dynamicNodeLoads.Unsubscribe();
-            _sceneTraverser.SetActionReceiver(null);
-            _initialized = false;
+            try
+            {
+                _dynamicLoaderRuntime.Stop();
+            }
+            finally
+            {
+                _dynamicNodeLoads.Unsubscribe();
+                _sceneTraverser.SetActionReceiver(null);
+                _initialized = false;
+            }
         }
 
         public void ProcessFrame(in StreamingFrameContext context)
         {
-            if (context.UnityCamera == null || context.NativeCamera == null)
+            if (context.UnityCamera == null ||
+                !_nativeSceneSession.IsInitialized)
                 return;
 
             // A callback may attempt to render recursively. Reject it without
@@ -239,20 +267,24 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
         private void TraverseNativeScene(in StreamingFrameContext context)
         {
             EnsureState(StreamingPipelineState.Rendering);
+            var nativeResources = _nativeSceneSession.RenderResources;
 
             using (ProfilerMarkerCull.Auto())
             {
                 var lodFactor = context.SceneCamera.LodFactor;
-                Lod.SetLODFactor(context.NativeContext, lodFactor);
+                Lod.SetLODFactor(nativeResources.Context, lodFactor);
                 MapControl.SystemMap.LodFactor = lodFactor;
 
                 var renderTime = GizmoSDK.GizmoBase.Time.SystemSeconds;
                 renderTime = context.SceneCamera.UpdateCamera(renderTime);
                 context.NotifyCameraUpdated?.Invoke(renderTime);
-                context.NativeContext.CurrentRenderTime = renderTime;
+                nativeResources.Context.CurrentRenderTime = renderTime;
 
-                if (context.NativeCamera is PerspCamera perspectiveCamera)
+                if (nativeResources.Camera is PerspCamera perspectiveCamera)
                 {
+                    // Map/scene resets can disable ROI-relative positioning.
+                    // Reassert it at the traversal boundary where it is required.
+                    perspectiveCamera.RoiPosition = true;
                     perspectiveCamera.VerticalFOV = context.UnityCamera.fieldOfView;
                     perspectiveCamera.HorizontalFOV =
                         2 * Mathf.Atan(
@@ -267,17 +299,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                         context.UnityCamera.farClipPlane;
                 }
 
-                context.NativeCamera.Transform =
+                nativeResources.Camera.Transform =
                     context.UnityCamera.transform.worldToLocalMatrix
                         .ToZFlippedMatrix4();
-                context.NativeCamera.Position =
+                nativeResources.Camera.Position =
                     context.SceneCamera.GlobalPosition;
-                context.NativeCamera.Render(
-                    context.NativeContext,
+                nativeResources.Camera.Render(
+                    nativeResources.Context,
                     1000,
                     1000,
                     1000,
-                    context.TraverseAction);
+                    nativeResources.TraverseAction);
             }
         }
 

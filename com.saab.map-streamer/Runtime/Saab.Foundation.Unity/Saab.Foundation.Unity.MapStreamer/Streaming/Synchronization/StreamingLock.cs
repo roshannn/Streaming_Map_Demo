@@ -1,9 +1,12 @@
+using System;
+
 using GizmoSDK.Gizmo3D;
 
 namespace Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization
 {
     internal interface IStreamingLock
     {
+        IDisposable AcquireEdit();
         bool TryAcquireEdit(uint timeoutMilliseconds);
         bool ChangeToRender();
         bool ChangeToEdit();
@@ -17,6 +20,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization
         public bool IsRenderLock => NodeLock.IsLockedRender();
         public bool IsOwnedByCurrentThread => NodeLock.IsLockedByMe();
 
+        public IDisposable AcquireEdit()
+        {
+            NodeLock.WaitLockEdit();
+            return new EditLockLease();
+        }
+
         public bool TryAcquireEdit(uint timeoutMilliseconds) =>
             NodeLock.TryLockEdit(timeoutMilliseconds);
 
@@ -25,5 +34,19 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization
         public bool ChangeToEdit() => NodeLock.ChangeToEditLock();
 
         public void Release() => NodeLock.UnLock();
+
+        private sealed class EditLockLease : IDisposable
+        {
+            private bool _released;
+
+            public void Dispose()
+            {
+                if (_released)
+                    return;
+
+                _released = true;
+                NodeLock.UnLock();
+            }
+        }
     }
 }

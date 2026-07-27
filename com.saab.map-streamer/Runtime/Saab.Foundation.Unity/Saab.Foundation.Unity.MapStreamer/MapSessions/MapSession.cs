@@ -5,7 +5,9 @@ using GizmoSDK.Gizmo3D;
 
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
+using Saab.Foundation.Unity.MapStreamer.Native;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
 
@@ -29,6 +31,8 @@ namespace Saab.Foundation.Unity.MapStreamer.MapSessions
         private readonly NodeBuildCoordinator _builds;
         private readonly INodeUpdateRegistry _nodeUpdates;
         private readonly IExternalAssetQueue _externalAssets;
+        private readonly NativeSceneSession _nativeSceneSession;
+        private readonly IStreamingLock _streamingLock;
 
         private GameObject _unityRoot;
 
@@ -44,7 +48,9 @@ namespace Saab.Foundation.Unity.MapStreamer.MapSessions
             SceneTraverser sceneTraverser,
             NodeBuildCoordinator builds,
             INodeUpdateRegistry nodeUpdates,
-            IExternalAssetQueue externalAssets)
+            IExternalAssetQueue externalAssets,
+            NativeSceneSession nativeSceneSession,
+            IStreamingLock streamingLock)
         {
             MapUrl = mapConfig.MapUrl;
             _dynamicNodeLoads = dynamicNodeLoads;
@@ -58,18 +64,18 @@ namespace Saab.Foundation.Unity.MapStreamer.MapSessions
             _builds = builds;
             _nodeUpdates = nodeUpdates;
             _externalAssets = externalAssets;
+            _nativeSceneSession = nativeSceneSession;
+            _streamingLock = streamingLock;
         }
 
         public string MapUrl { get; private set; }
 
         public MapLoadResult Load(
             string mapUrl,
-            Scene nativeScene,
             MapLoadErrorHandler onLoadError)
         {
-            NodeLock.WaitLockEdit();
-
-            try
+            var nativeScene = _nativeSceneSession.Scene;
+            using (_streamingLock.AcquireEdit())
             {
                 ResetLocked(nativeScene);
 
@@ -112,24 +118,13 @@ namespace Saab.Foundation.Unity.MapStreamer.MapSessions
 
                 return MapLoadResult.Loaded(node);
             }
-            finally
-            {
-                NodeLock.UnLock();
-            }
         }
 
-        public void Reset(Scene nativeScene)
+        public void Reset()
         {
-            NodeLock.WaitLockEdit();
-
-            try
-            {
+            var nativeScene = _nativeSceneSession.Scene;
+            using (_streamingLock.AcquireEdit())
                 ResetLocked(nativeScene);
-            }
-            finally
-            {
-                NodeLock.UnLock();
-            }
         }
 
         private void AttachMap(Scene nativeScene, Node node)

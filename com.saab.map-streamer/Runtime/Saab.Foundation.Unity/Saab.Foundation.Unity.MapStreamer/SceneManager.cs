@@ -36,8 +36,6 @@
 //
 //******************************************************************************
 
-//#define DEBUG_CAMERA
-
 // Unity Managed classes
 using UnityEngine;
 
@@ -45,14 +43,9 @@ using UnityEngine;
 using GizmoSDK.GizmoBase;
 using GizmoSDK.Gizmo3D;
 
-// Fix some conflicts between unity and Gizmo namespaces
-using gzCamera = GizmoSDK.Gizmo3D.Camera;
-using gzTexture = GizmoSDK.Gizmo3D.Texture;
-
-
 // Map utility
-using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.MapSessions;
+using Saab.Foundation.Unity.MapStreamer.Native;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
@@ -110,20 +103,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         public event EventHandler_OnMapLoadError    OnMapLoadError;
         public event EventHandler_OnUpdateCamera    OnUpdateCamera; // Called after SceneManagerCamera is updated
 
-        #region ------------- Privates ----------------
-
-        private Scene _native_scene;
-        private gzCamera _native_camera;
-        private Context _native_context;
-        private CullTraverseAction _native_traverse_action;
-
-        //#pragma warning disable 414
-        //private UnityPluginInitializer _plugin_initializer;
-        //#pragma warning restore 414
-
-        #endregion
-
-
         private static readonly ProfilerMarker _profilerMarkerRender = new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
         private bool _initialized;
 
@@ -140,6 +119,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         private NodeHandlePool _nodeHandlePool;
         private StreamingPipeline _streamingPipeline;
         private MapSession _mapSession;
+        private NativeSceneSession _nativeSceneSession;
 
         [Inject]
         private void Construct(
@@ -150,7 +130,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             MaterialManager materialManager,
             NodeHandlePool nodeHandlePool,
             StreamingPipeline streamingPipeline,
-            MapSession mapSession)
+            MapSession mapSession,
+            NativeSceneSession nativeSceneSession)
         {
             _externalAssetLoader = externalAssetLoader;
             _builderRegistry = builderRegistry;
@@ -160,6 +141,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             _nodeHandlePool = nodeHandlePool;
             _streamingPipeline = streamingPipeline;
             _mapSession = mapSession;
+            _nativeSceneSession = nativeSceneSession;
         }
 
         public void AddBuilder(INodeBuilder builder)
@@ -196,7 +178,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             var result = _mapSession.Load(
                 mapURL,
-                _native_scene,
                 NotifyMapLoadError);
             if (!result.Success)
                 return false;
@@ -208,7 +189,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public bool ResetMap()
         {
-            _mapSession.Reset(_native_scene);
+            _mapSession.Reset();
             return true;
         }
 
@@ -262,46 +243,27 @@ namespace Saab.Foundation.Unity.MapStreamer
             _nodeHandlePool.Initialize(_poolPolicyRegistry);
 
             
-            NodeLock.WaitLockEdit();
-
-            try // We are now locked in edit
+            _nativeSceneSession.Initialize();
+            try
             {
-                // Camera setup
-                _native_camera = new PerspCamera("Test");
-                _native_camera.RoiPosition = true;
-                MapControl.SystemMap.Camera = _native_camera;
+                _streamingPipeline.Initialize();
 
-                // Top scene
-                _native_scene = new Scene("Scene");
-                _native_camera.Scene = _native_scene;
-
-                // Top context
-                _native_context = new Context();
-
-#if DEBUG_CAMERA
-
-                // If we want to visualize debug 3D
-                _native_camera.Debug(_native_context);      // Enable to debug view
-
-#endif // DEBUG_CAMERA
-
-                // Default travrser
-                _native_traverse_action = new CullTraverseAction();
-
-                // _native_traverse_action.SetOmniTraverser(true);  // To skip camera cull and use LOD in omni directions
-
-
+                // Start coroutines for asset loading
+                StartCoroutine(_externalAssetLoader.Process());
             }
-            finally
+            catch
             {
+                try
+                {
+                    _streamingPipeline.Shutdown();
+                }
+                finally
+                {
+                    _nativeSceneSession.Dispose();
+                }
 
-                NodeLock.UnLock();
+                throw;
             }
-
-            _streamingPipeline.Initialize();
-
-            // Start coroutines for asset loading
-            StartCoroutine(_externalAssetLoader.Process());
 
             return true;
         }
@@ -311,36 +273,32 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (!_initialized)
                    return false;
 
-            _streamingPipeline.Shutdown();
-
-            ResetMap();
-
-            NodeLock.WaitLockEdit();
-
-            try // We are now locked in edit
+            try
             {
-
-                _native_camera.Debug(_native_context, false);
-                _native_camera.Dispose();
-                _native_camera = null;
-
-                _native_context.Dispose();
-                _native_context = null;
-
-                _native_scene.Dispose();
-                _native_scene = null;
-
+                _streamingPipeline.Shutdown();
             }
             finally
             {
-                NodeLock.UnLock();
+                try
+                {
+                    ResetMap();
+                }
+                finally
+                {
+                    try
+                    {
+                        _nativeSceneSession.Dispose();
+                    }
+                    finally
+                    {
+                        _initialized = false;
+                    }
+                }
             }
 
             // Dont do this as Unity wants to keep modules loaded
             //// Drop platform streamer
             //GizmoSDK.Gizmo3D.Platform.Uninitialize();
-
-            _initialized = false;
 
             return true;
         }
@@ -350,15 +308,37 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (_initialized)
                 return true;
 
-            _initialized = true;
-           
             // Initialize this manager
             if (!InitializeInternal())
                 return false;
 
-            // Load the map
-            if (loadMap && !LoadMap(_mapSession.MapUrl))
-                return false;
+            _initialized = true;
+
+            try
+            {
+                // Load the map
+                if (loadMap && !LoadMap(_mapSession.MapUrl))
+                {
+                    Uninitialize();
+                    return false;
+                }
+            }
+            catch
+            {
+                if (_initialized)
+                {
+                    try
+                    {
+                        Uninitialize();
+                    }
+                    catch (Exception cleanupException)
+                    {
+                        Debug.LogException(cleanupException);
+                    }
+                }
+
+                throw;
+            }
 
             return true;
         }
@@ -408,9 +388,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                 var frame = new StreamingFrameContext(
                     SceneManagerCamera,
                     SceneManagerCamera.Camera,
-                    _native_camera,
-                    _native_context,
-                    _native_traverse_action,
                     NotifyPreTraverse,
                     NotifyCameraUpdated);
                 _streamingPipeline.ProcessFrame(frame);

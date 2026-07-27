@@ -4,6 +4,7 @@ using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Configuration;
 using Saab.Foundation.Unity.MapStreamer.MapSessions;
 using Saab.Foundation.Unity.MapStreamer.Modules;
+using Saab.Foundation.Unity.MapStreamer.Native;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
@@ -62,6 +63,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<MaterialManager>(Lifetime.Scoped);
             builder.Register<NodeHandlePool>(Lifetime.Scoped);
             builder.Register<NodeHierarchyUnloader>(Lifetime.Scoped);
+            builder.Register<NativeSceneSession>(Lifetime.Scoped);
             builder.Register<SceneTraverser>(Lifetime.Scoped);
             builder.Register<DynamicLoaderRuntime>(Lifetime.Scoped);
             builder.Register<DynamicNodeLoadCoordinator>(Lifetime.Scoped);

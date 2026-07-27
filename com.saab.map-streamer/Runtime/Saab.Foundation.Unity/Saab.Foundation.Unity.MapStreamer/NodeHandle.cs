@@ -151,30 +151,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             set { if (value) stateFlags |= NodeStateFlags.UpdateTransform; else stateFlags &= ~NodeStateFlags.UpdateTransform; }
         }
 
-        // [ZJP] NOTE
-        // This is handled by the pooling system now
-
-        // We need to release all existing objects in a locked mode
-        //void OnDestroy()
-        //{
-        //    if (node == null)
-        //        return;
-        //
-        //    // Basically all nodes in the GameObject scene should already be release by callbacks but there might be some nodes left that needs this /behaviour
-        //    if (inNodeUtilsRegistry)
-        //    {
-        //        NodeUtils.RemoveGameObjectReference(node.GetNativeReference(), gameObject);
-        //        inNodeUtilsRegistry = false;
-        //    }
-        //
-        //    if (node.IsValid())
-        //    {
-        //        NodeLock.WaitLockEdit();
-        //        node.Dispose();
-        //        NodeLock.UnLock();
-        //    }
-        //}
-
         // Only called from one thread
 
 
