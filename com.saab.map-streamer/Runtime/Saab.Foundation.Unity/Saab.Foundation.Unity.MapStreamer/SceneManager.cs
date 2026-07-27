@@ -137,7 +137,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
         public ISceneManagerCamera  SceneManagerCamera;
-        public string               MapUrl;
+        public string               MapUrl { get; private set; }
         public NodeBuilderBase[] Builders;
 
         // Events ----------------------------------------------------------
@@ -209,7 +209,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
             NodeHierarchyUnloader hierarchyUnloader,
-            ITraversalConfiguration traversalConfiguration)
+            ITraversalConfiguration traversalConfiguration,
+            MapConfig mapConfig)
         {
             _nodeUpdateRegistry = nodeUpdateRegistry;
             _externalAssetLoader = externalAssetLoader;
@@ -224,6 +225,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             _nodeHandlePool = nodeHandlePool;
             _hierarchyUnloader = hierarchyUnloader;
             _traversalConfiguration = traversalConfiguration;
+            MapUrl = mapConfig.MapUrl;
         }
 
         public void AddBuilder(INodeBuilder builder)

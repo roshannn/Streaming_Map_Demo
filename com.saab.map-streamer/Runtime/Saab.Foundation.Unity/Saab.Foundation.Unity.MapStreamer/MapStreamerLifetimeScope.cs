@@ -1,3 +1,5 @@
+using System;
+
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
@@ -13,8 +15,17 @@ namespace Saab.Foundation.Unity.MapStreamer
 {
     public sealed class MapStreamerLifetimeScope : LifetimeScope
     {
+        [UnityEngine.SerializeField]
+        private MapConfig mapConfig;
+
         protected override void Configure(IContainerBuilder builder)
         {
+            if (mapConfig == null)
+                throw new InvalidOperationException(
+                    "MapConfig must be assigned on MapStreamerLifetimeScope.");
+
+            builder.RegisterInstance(mapConfig);
+
             builder.RegisterComponentInHierarchy<NodeEvents>();
             builder.RegisterComponentInHierarchy<SceneManager>();
             builder.RegisterComponentInHierarchy<CameraControl>();

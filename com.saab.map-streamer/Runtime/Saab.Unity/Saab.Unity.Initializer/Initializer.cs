@@ -174,12 +174,6 @@ namespace Saab.Unity.Initializer
 
             // Set up scene manager camera
 
-            _sceneManager.MapUrl = KeyDatabase.GetDefaultUserKey(
-                "SceneManager/MapUrl",
-                _sceneManager.MapUrl);
-
-            //scenemanager.MapUrl()
-
             _sceneManager.SceneManagerCamera = _cameraControl;
 
         }

@@ -162,7 +162,6 @@ MonoBehaviour:
     DynamicLoaders: 4
     IntersectMask: -1
     Options: 5
-  MapUrl: 
   Builders:
   - {fileID: 44396063}
   - {fileID: 44396062}
@@ -191,6 +190,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   autoRun: 1
+  mapConfig: {fileID: 11400000, guid: 8b437e76f2c24c1ea137d4483f047192, type: 2}
 --- !u!4 &44396061
 Transform:
   m_ObjectHideFlags: 0
