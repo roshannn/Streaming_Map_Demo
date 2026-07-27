@@ -156,12 +156,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4247e51c3496f4042a0b4726f65a39a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Settings:
-    MaxBuildTime: 0.016
-    MinBuildTime: 0.004
-    DynamicLoaders: 4
-    IntersectMask: -1
-    Options: 5
   Builders:
   - {fileID: 44396063}
   - {fileID: 44396062}
@@ -191,6 +185,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   autoRun: 1
   mapConfig: {fileID: 11400000, guid: 8b437e76f2c24c1ea137d4483f047192, type: 2}
+  mapStreamerSettings: {fileID: 11400000, guid: cc6b90043f034ee6a9305b1fd671948a, type: 2}
 --- !u!4 &44396061
 Transform:
   m_ObjectHideFlags: 0

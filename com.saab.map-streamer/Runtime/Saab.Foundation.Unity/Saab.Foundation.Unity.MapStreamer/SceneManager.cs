@@ -89,52 +89,10 @@ namespace Saab.Foundation.Unity.MapStreamer
         float LodFactor { get; }                    // Current lod factor
     }
 
-    /// <summary>
-    /// Options for configuring SceneManager runtime behaviour
-    /// </summary>
-    [Flags]
-    public enum SceneManagerOptions
-    {
-        None = 0,
-
-        /// <summary>
-        /// Render during component update, disable to manually control when render is performed
-        /// </summary>
-        RenderInUpdate = 1 << 0,
-
-        /// <summary>
-        /// Skip asset loading and ignore RefNodes
-        /// </summary>
-        DisableInstancing = 1 << 1,
-
-        LazyLoadAssets = 1 << 2,
-    }
-
-    [Serializable]
-    public struct SceneManagerSettings
-    {
-        public double   MaxBuildTime;                       // Max time to spend in frame to build objects
-        public double   MinBuildTime;                       // Min time to spend in frame to build objects
-        public byte     DynamicLoaders;
-        public IntersectMaskValue IntersectMask;
-        public SceneManagerOptions Options;
-
-        public static readonly SceneManagerSettings Default = new SceneManagerSettings
-        {
-            MaxBuildTime = 0.012,       // 12ms
-            MinBuildTime = 0.004,       // 4ms == 16 ms, 60fps
-            DynamicLoaders = 4,
-            IntersectMask = IntersectMaskValue.ALL,
-            Options = SceneManagerOptions.RenderInUpdate,
-        };
-    }
-
-
     [RequireComponent(typeof(NodeEvents))]
     [RequireComponent(typeof(MapStreamerLifetimeScope))]
     public class SceneManager : MonoBehaviour
     {
-        public SceneManagerSettings Settings = SceneManagerSettings.Default;
         public ISceneManagerCamera  SceneManagerCamera;
         public NodeBuilderBase[] Builders;
 
@@ -303,14 +261,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             _nodeHandlePool.Initialize(_poolPolicyRegistry);
 
-            if (!_nodeHandlePool.HasPool(PoolObjectFeature.StaticMesh))
-            {
-                Settings.Options |= SceneManagerOptions.DisableInstancing;
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "disabling instancing, no builder for StaticMesh feature");
-            }
-
-            _streamingPipeline.Initialize(Settings);
-
             
             NodeLock.WaitLockEdit();
 
@@ -348,10 +298,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 NodeLock.UnLock();
             }
 
-            // Set up dynamic loading
-            DynamicLoader.UsePreCache(true);                    // Enable use of mipmap creation on dynamic loading
-            DynamicLoaderManager.SetNumberOfActiveLoaders(Settings.DynamicLoaders);   // Lets start with 4 parallell threads
-            DynamicLoaderManager.StartManager();
+            _streamingPipeline.Initialize();
 
             // Start coroutines for asset loading
             StartCoroutine(_externalAssetLoader.Process());
@@ -364,8 +311,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (!_initialized)
                    return false;
 
-            // Stop manager
-            DynamicLoaderManager.StopManager();
+            _streamingPipeline.Shutdown();
 
             ResetMap();
 
@@ -389,8 +335,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             {
                 NodeLock.UnLock();
             }
-
-            _streamingPipeline.Shutdown();
 
             // Dont do this as Unity wants to keep modules loaded
             //// Drop platform streamer
@@ -449,7 +393,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         // Update is called once per frame
         private void Update()
         {
-            if (Settings.Options.HasFlag(SceneManagerOptions.RenderInUpdate))
+            if (_streamingPipeline.RenderInUpdate)
                 Render();
         }
 
@@ -467,7 +411,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                     _native_camera,
                     _native_context,
                     _native_traverse_action,
-                    Settings,
                     NotifyPreTraverse,
                     NotifyCameraUpdated);
                 _streamingPipeline.ProcessFrame(frame);

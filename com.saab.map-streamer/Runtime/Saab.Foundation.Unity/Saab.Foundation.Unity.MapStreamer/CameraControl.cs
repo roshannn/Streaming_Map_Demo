@@ -38,11 +38,13 @@
 
 using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Unity.Extensions;
 using Saab.Utility.Unity.NodeUtils;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using VContainer;
 using Quaternion = UnityEngine.Quaternion;
 using Random = UnityEngine.Random;
 
@@ -61,6 +63,13 @@ namespace Saab.Foundation.Unity.MapStreamer
 
     public class CameraControl : MonoBehaviour, ISceneManagerCamera
     {
+        private DynamicLoaderRuntime _dynamicLoaderRuntime;
+
+        [Inject]
+        private void Construct(DynamicLoaderRuntime dynamicLoaderRuntime)
+        {
+            _dynamicLoaderRuntime = dynamicLoaderRuntime;
+        }
 
         public float Speed = 20f;
         public float ShiftMultiplier = 2f;
@@ -264,12 +273,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             if (Input.GetKey("b"))
             {
-                GizmoSDK.Gizmo3D.DynamicLoaderManager.StopManager();
+                _dynamicLoaderRuntime.Pause();
             }
 
             if (Input.GetKey("v"))
             {
-                GizmoSDK.Gizmo3D.DynamicLoaderManager.StartManager();
+                _dynamicLoaderRuntime.Resume();
             }
         }
 

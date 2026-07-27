@@ -6,6 +6,7 @@ using GizmoSDK.Gizmo3D;
 
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
+using Saab.Foundation.Unity.MapStreamer.Configuration;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
@@ -31,6 +32,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
 
         private readonly IStreamingLock _streamingLock;
+        private readonly MapStreamerSettings _settingsAsset;
+        private readonly DynamicLoaderRuntime _dynamicLoaderRuntime;
         private readonly ITraversalConfiguration _traversalConfiguration;
         private readonly SceneTraverser _sceneTraverser;
         private readonly DynamicNodeLoadCoordinator _dynamicNodeLoads;
@@ -41,9 +44,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
         private bool _initialized;
         private bool _ownsLock;
+        private MapStreamerRuntimeSettings _settings;
 
         public StreamingPipeline(
             IStreamingLock streamingLock,
+            MapStreamerSettings settingsAsset,
+            DynamicLoaderRuntime dynamicLoaderRuntime,
             ITraversalConfiguration traversalConfiguration,
             SceneTraverser sceneTraverser,
             DynamicNodeLoadCoordinator dynamicNodeLoads,
@@ -52,6 +58,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             INodeUpdateRegistry nodeUpdates)
         {
             _streamingLock = streamingLock;
+            _settingsAsset = settingsAsset;
+            _dynamicLoaderRuntime = dynamicLoaderRuntime;
             _traversalConfiguration = traversalConfiguration;
             _sceneTraverser = sceneTraverser;
             _dynamicNodeLoads = dynamicNodeLoads;
@@ -63,16 +71,31 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
         internal StreamingPipelineState State { get; private set; } =
             StreamingPipelineState.Unlocked;
 
-        public void Initialize(in SceneManagerSettings settings)
-        {
-            _traversalConfiguration.Update(settings);
+        public bool RenderInUpdate =>
+            _settings.Options.HasFlag(MapStreamerOptions.RenderInUpdate);
 
+        public void Initialize()
+        {
             if (_initialized)
                 return;
 
+            _settings = _settingsAsset.CreateRuntimeSettings();
+            if (!_nodeHandlePool.HasPool(PoolObjectFeature.StaticMesh))
+            {
+                _settings = _settings.WithOption(
+                    MapStreamerOptions.DisableInstancing);
+                UnityEngine.Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "disabling instancing, no builder for StaticMesh feature");
+            }
+
+            _traversalConfiguration.Update(_settings);
             _dynamicNodeLoads.Subscribe();
             _sceneTraverser.SetActionReceiver(
                 _dynamicNodeLoads.ActionReceiver);
+            _dynamicLoaderRuntime.Start(_settings.DynamicLoaders);
             _initialized = true;
         }
 
@@ -81,6 +104,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             if (!_initialized)
                 return;
 
+            _dynamicLoaderRuntime.Stop();
             _dynamicNodeLoads.Unsubscribe();
             _sceneTraverser.SetActionReceiver(null);
             _initialized = false;
@@ -109,7 +133,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                 if (!TryBeginEditing(context))
                     return;
 
-                ProcessPendingLoads(context.Settings);
+                ProcessPendingLoads();
 
                 if (!TryBeginRendering())
                     return;
@@ -128,7 +152,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                 if (!TryBeginPostProcessing())
                     return;
 
-                ProcessTraversalResults(context.Settings);
+                ProcessTraversalResults();
                 CompleteFrame();
             }
             catch (Exception exception)
@@ -176,10 +200,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             return true;
         }
 
-        private void ProcessPendingLoads(in SceneManagerSettings settings)
+        private void ProcessPendingLoads()
         {
             EnsureState(StreamingPipelineState.Editing);
-            _traversalConfiguration.Update(settings);
+            _traversalConfiguration.Update(_settings);
 
             using (ProfilerMarkerTraverse.Auto())
                 _dynamicNodeLoads.ProcessLoads();
@@ -284,8 +308,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             return true;
         }
 
-        private void ProcessTraversalResults(
-            in SceneManagerSettings settings)
+        private void ProcessTraversalResults()
         {
             EnsureState(StreamingPipelineState.PostProcessing);
             _dynamicNodeLoads.ProcessActivations();
@@ -295,10 +318,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                 TimeSpan.FromMilliseconds(1));
 
             var remainingBuildTime =
-                TimeSpan.FromSeconds(settings.MaxBuildTime) -
+                TimeSpan.FromSeconds(_settings.MaxBuildTime) -
                 _frameTimer.Elapsed;
             var minimumBuildTime =
-                TimeSpan.FromSeconds(settings.MinBuildTime);
+                TimeSpan.FromSeconds(_settings.MinBuildTime);
             if (remainingBuildTime < minimumBuildTime)
                 remainingBuildTime = minimumBuildTime;
 

@@ -1,6 +1,7 @@
 using System;
 
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
+using Saab.Foundation.Unity.MapStreamer.Configuration;
 using Saab.Foundation.Unity.MapStreamer.MapSessions;
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
@@ -21,13 +22,20 @@ namespace Saab.Foundation.Unity.MapStreamer
         [UnityEngine.SerializeField]
         private MapConfig mapConfig;
 
+        [UnityEngine.SerializeField]
+        private MapStreamerSettings mapStreamerSettings;
+
         protected override void Configure(IContainerBuilder builder)
         {
             if (mapConfig == null)
                 throw new InvalidOperationException(
                     "MapConfig must be assigned on MapStreamerLifetimeScope.");
+            if (mapStreamerSettings == null)
+                throw new InvalidOperationException(
+                    "MapStreamerSettings must be assigned on MapStreamerLifetimeScope.");
 
             builder.RegisterInstance(mapConfig);
+            builder.RegisterInstance(mapStreamerSettings);
 
             builder.RegisterComponentInHierarchy<NodeEvents>();
             builder.RegisterComponentInHierarchy<SceneManager>();
@@ -55,6 +63,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<NodeHandlePool>(Lifetime.Scoped);
             builder.Register<NodeHierarchyUnloader>(Lifetime.Scoped);
             builder.Register<SceneTraverser>(Lifetime.Scoped);
+            builder.Register<DynamicLoaderRuntime>(Lifetime.Scoped);
             builder.Register<DynamicNodeLoadCoordinator>(Lifetime.Scoped);
             builder.Register<MapSession>(Lifetime.Scoped);
             builder.Register<StreamingLock>(Lifetime.Scoped)
