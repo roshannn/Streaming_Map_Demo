@@ -32,17 +32,20 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
         private readonly IStreamingLock _streamingLock;
         private readonly ITraversalConfiguration _traversalConfiguration;
+        private readonly SceneTraverser _sceneTraverser;
         private readonly DynamicNodeLoadCoordinator _dynamicNodeLoads;
         private readonly NodeHandlePool _nodeHandlePool;
         private readonly NodeBuildCoordinator _buildCoordinator;
         private readonly INodeUpdateRegistry _nodeUpdates;
         private readonly Stopwatch _frameTimer = new Stopwatch();
 
+        private bool _initialized;
         private bool _ownsLock;
 
         public StreamingPipeline(
             IStreamingLock streamingLock,
             ITraversalConfiguration traversalConfiguration,
+            SceneTraverser sceneTraverser,
             DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
             NodeBuildCoordinator buildCoordinator,
@@ -50,6 +53,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
         {
             _streamingLock = streamingLock;
             _traversalConfiguration = traversalConfiguration;
+            _sceneTraverser = sceneTraverser;
             _dynamicNodeLoads = dynamicNodeLoads;
             _nodeHandlePool = nodeHandlePool;
             _buildCoordinator = buildCoordinator;
@@ -58,6 +62,29 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
         internal StreamingPipelineState State { get; private set; } =
             StreamingPipelineState.Unlocked;
+
+        public void Initialize(in SceneManagerSettings settings)
+        {
+            _traversalConfiguration.Update(settings);
+
+            if (_initialized)
+                return;
+
+            _dynamicNodeLoads.Subscribe();
+            _sceneTraverser.SetActionReceiver(
+                _dynamicNodeLoads.ActionReceiver);
+            _initialized = true;
+        }
+
+        public void Shutdown()
+        {
+            if (!_initialized)
+                return;
+
+            _dynamicNodeLoads.Unsubscribe();
+            _sceneTraverser.SetActionReceiver(null);
+            _initialized = false;
+        }
 
         public void ProcessFrame(in StreamingFrameContext context)
         {

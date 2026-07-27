@@ -52,11 +52,9 @@ using gzTexture = GizmoSDK.Gizmo3D.Texture;
 
 // Map utility
 using Saab.Foundation.Map;
-using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.MapSessions;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
-using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
 using Saab.Utility.GfxCaps;
@@ -181,10 +179,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         // Used by builders to share and manage Material resources
         private MaterialManager _materialManager;
 
-        private SceneTraverser _sceneTraverser;
-        private DynamicNodeLoadCoordinator _dynamicNodeLoadCoordinator;
         private NodeHandlePool _nodeHandlePool;
-        private ITraversalConfiguration _traversalConfiguration;
         private StreamingPipeline _streamingPipeline;
         private MapSession _mapSession;
 
@@ -195,10 +190,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             PooledNodeObjectPolicyRegistry poolPolicyRegistry,
             TextureManager textureManager,
             MaterialManager materialManager,
-            SceneTraverser sceneTraverser,
-            DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
-            ITraversalConfiguration traversalConfiguration,
             StreamingPipeline streamingPipeline,
             MapSession mapSession)
         {
@@ -207,10 +199,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             _poolPolicyRegistry = poolPolicyRegistry;
             _textureManager = textureManager;
             _materialManager = materialManager;
-            _sceneTraverser = sceneTraverser;
-            _dynamicNodeLoadCoordinator = dynamicNodeLoads;
             _nodeHandlePool = nodeHandlePool;
-            _traversalConfiguration = traversalConfiguration;
             _streamingPipeline = streamingPipeline;
             _mapSession = mapSession;
         }
@@ -320,9 +309,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "disabling instancing, no builder for StaticMesh feature");
             }
 
-            _traversalConfiguration.Update(Settings);
-            _dynamicNodeLoadCoordinator.Subscribe();
-            _sceneTraverser.SetActionReceiver(_dynamicNodeLoadCoordinator.ActionReceiver);
+            _streamingPipeline.Initialize(Settings);
 
             
             NodeLock.WaitLockEdit();
@@ -403,8 +390,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 NodeLock.UnLock();
             }
 
-            _dynamicNodeLoadCoordinator.Unsubscribe();
-            _sceneTraverser.SetActionReceiver(null);
+            _streamingPipeline.Shutdown();
 
             // Dont do this as Unity wants to keep modules loaded
             //// Drop platform streamer
