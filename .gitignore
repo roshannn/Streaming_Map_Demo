@@ -291,6 +291,10 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# Locally downloaded/generated offline map data and release payloads
+projects/com.saab.map-streamer/OfflineMaps/
+release-artifacts/
+
 # Visual Studio 6 build log
 *.plg
 

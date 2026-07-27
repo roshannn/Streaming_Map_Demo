@@ -24,6 +24,25 @@ Dont use ARM and ARM64 builds in parallell or rename and configure dlls properly
 
 You could also simply just run the corresponding .bat script (build_x64, build_x64_d, etc..) and every thing will be setup correctly.
 
+Offline map download
+====================
+
+The offline stock map is published as multipart assets in the
+[`offline-map-v1` GitHub Release](https://github.com/roshannn/Streaming_Map_Demo/releases/tag/offline-map-v1).
+After cloning or downloading this repository on Windows, run:
+
+```bat
+Download_Offline_Map.bat
+```
+
+No URL, separate downloader, or manual release-asset download is required. The
+installer checks whether the current map is already present, downloads only
+missing data, resumes interrupted parts, displays transfer progress, verifies
+SHA-256 checksums, reconstructs and extracts the package, and installs it under
+`projects\com.saab.map-streamer\OfflineMaps\stock`. The download is approximately
+17.2 GiB and requires additional temporary disk space while it is assembled and
+extracted.
+
 
 Running the demo
 ================
@@ -52,4 +71,4 @@ The SceneGraph API also allows a fast intersector query to be performed to find 
 The demo shows an example of SBD maps (Streaming Binary Data) that are quad or octree based spatial data in 3D. The format allows very large databases (entire globe) to be divided on multiple servers and that can have details down to (mm) in resolution.
 
 ![Screenshot](https://gizmosdk.blob.core.windows.net/maps/stock/thumb.png)
-_[A screenshot showing how feature/height data can be used to present trees with accurate position and height]_  
+_[A screenshot showing how feature/height data can be used to present trees with accurate position and height]_
