@@ -45,6 +45,7 @@
 using GizmoSDK.GizmoBase;
 using UnityEngine;
 using Saab.Foundation.Unity.MapStreamer;
+using VContainer;
 
 
 namespace Saab.Unity.Initializer
@@ -54,12 +55,23 @@ namespace Saab.Unity.Initializer
         //private DebugCommandStation station=null;
 
         private PerformanceTracer tracer;
+        private SceneManager _sceneManager;
+        private CameraControl _cameraControl;
 
 #if UNITY_ANDROID
 
         private AndroidJavaObject multicastLock;
 
 #endif //UNITY_ANDROID
+
+        [Inject]
+        private void Construct(
+            SceneManager sceneManager,
+            CameraControl cameraControl)
+        {
+            _sceneManager = sceneManager;
+            _cameraControl = cameraControl;
+        }
 
         void SetupJavaBindings()
         {
@@ -162,14 +174,7 @@ namespace Saab.Unity.Initializer
 
             // Set up scene manager camera
 
-            SceneManager scenemanager = FindObjectOfType<SceneManager>();
-            CameraControl cameracontrol = FindObjectOfType<CameraControl>();
-
-            scenemanager.MapUrl = KeyDatabase.GetDefaultUserKey("SceneManager/MapUrl", scenemanager.MapUrl);
-
-            //scenemanager.MapUrl()
-
-            scenemanager.SceneManagerCamera = cameracontrol;
+            _sceneManager.SceneManagerCamera = _cameraControl;
 
         }
 

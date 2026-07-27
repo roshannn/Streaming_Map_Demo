@@ -21,6 +21,5 @@
     <SceneManager>
       <SceneCleanupTime>10</SceneCleanupTime> <!-- seconds -->
       <DynamicLoaders>4</DynamicLoaders>
-      <MapUrl>http://gizmosdk.blob.core.windows.net/maps/stock/map.gzd</MapUrl>
     </SceneManager>
 </Unity>

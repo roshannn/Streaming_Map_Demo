@@ -19,6 +19,8 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 using Saab.Foundation.Unity.MapStreamer.Utils;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
+using VContainer;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
@@ -72,7 +74,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class MapShadingModule : MonoBehaviour
     {
-        public SceneManager SceneManager;
+        private NodeEvents _nodeEvents;
 
         public bool EnableDetailedTextures
         {
@@ -125,11 +127,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private readonly Dictionary<GameObject, TerrainData> _terrainData = new Dictionary<GameObject, TerrainData>();
 
+        [Inject]
+        private void Construct(NodeEvents nodeEvents)
+        {
+            _nodeEvents = nodeEvents;
+        }
+
         private void Awake()
         {
-            if (SceneManager == null)
-                return;
-
             _enableDetailedTextures = GfxCaps.CurrentCaps.HasFlag(Capability.UseTerrainDetailTextures);
             InitializeModule();
             RefreshSettings();
@@ -145,13 +150,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
+            if (_nodeEvents != null)
+                _nodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
+
             if (_mappingBuffer != null)
                 _mappingBuffer.Release();
         }
 
         public void InitializeModule()
         {
-            if (SceneManager && _enableDetailedTextures)
+            if (_nodeEvents && _enableDetailedTextures)
             {
                 InitMapModules();
                 InitDetailTexturing();
@@ -160,7 +168,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void InitMapModules()
         {
-            SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
+            _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
         }
 
         private void InitDetailTexturing()
@@ -217,7 +225,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)
+        private void NodeEvents_OnTerrainCreated(GameObject go, bool isAsset)
         {
             if (!go.TryGetComponent<NodeHandle>(out var nodehandle))
                 return;

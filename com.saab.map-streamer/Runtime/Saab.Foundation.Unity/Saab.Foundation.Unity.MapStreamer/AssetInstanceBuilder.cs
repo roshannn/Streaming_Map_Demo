@@ -80,25 +80,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             return true;
         }
 
-        public void BuiltObjectReturnedToPool(GameObject gameObject, bool sharedAsset)
-        {
-            System.Diagnostics.Debug.Assert(sharedAsset);
-
-            if (gameObject.TryGetComponent<MeshRenderer>(out var renderer))
-            {
-                renderer.enabled = false;
-                renderer.sharedMaterial = null;
-            }
-            if (gameObject.TryGetComponent<MeshFilter>(out var filter))
-                filter.sharedMesh = null;
-        }
-
-        public void InitPoolObject(GameObject gameObject)
-        {
-            gameObject.AddComponent<MeshRenderer>();
-            gameObject.AddComponent<MeshFilter>();
-        }
-
         public bool CanBuild(Node node, TraversalState traversalState, IntersectMaskValue intersectMask)
         {
             // SceneManager will manually control when this builder runs

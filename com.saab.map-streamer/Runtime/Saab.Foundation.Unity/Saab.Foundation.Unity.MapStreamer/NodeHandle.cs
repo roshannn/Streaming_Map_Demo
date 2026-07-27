@@ -44,6 +44,7 @@ using Saab.Unity.Extensions;
 using System;
 // Unity Managed classes
 using UnityEngine;
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 
 // Fix some conflicts between unity and Gizmo namespaces
 using gzTransform = GizmoSDK.Gizmo3D.Transform;
@@ -106,9 +107,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         [SerializeField]
         internal PoolObjectFeature featureKey;
 
-        // builder associated with this node
+        // feature-specific lifecycle policy associated with this pooled object
         [NonSerialized]
-        internal INodeBuilder builder;
+        internal IPooledNodeObjectPolicy poolPolicy;
 
         // used during delayed build to detect recycled nodes
         [NonSerialized]
@@ -208,7 +209,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                 node.ReleaseAlreadyLocked();
             
             node = null;
-            builder = null;
             stateLoadInfo = StateLoadInfo.None;
             stateFlags = NodeStateFlags.None;
             if (texture)

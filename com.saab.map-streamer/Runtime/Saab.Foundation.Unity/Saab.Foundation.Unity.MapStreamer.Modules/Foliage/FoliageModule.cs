@@ -16,6 +16,7 @@
 using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Utility.GfxCaps;
 using System;
 using System.Collections;
@@ -24,6 +25,7 @@ using System.Linq;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
+using VContainer;
 
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
@@ -70,7 +72,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class FoliageModule : MonoBehaviour
     {
-        public SceneManager SceneManager;
+        private SceneManager _sceneManager;
+        private NodeEvents _nodeEvents;
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
 
@@ -155,15 +158,26 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
+        [Inject]
+        private void Construct(
+            SceneManager sceneManager,
+            NodeEvents nodeEvents)
+        {
+            _sceneManager = sceneManager;
+            _nodeEvents = nodeEvents;
+        }
+
         // Start is called before the first frame update
         void Start()
         {
             _mappingTable = TerrainMapping.MapFeatureData();
 
             StartCoroutine(WaitForDepth());
-            SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
-            SceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
-            SceneManager.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
+
+            _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
+            _nodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
+
+            _sceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
 
             for (int i = 0; i < Features.Count; i++)
             {
@@ -318,7 +332,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 _frustum[i].w = _frustrumPlanes[i].distance;
             }
         }
-        private void SceneManager_OnRemoveTerrain(GameObject go)
+        private void NodeEvents_OnTerrainRemoved(GameObject go)
         {
             foreach (var set in Features)
             {
@@ -332,7 +346,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public int FrameCount { get; set; }
         }
 
-        private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)
+        private void NodeEvents_OnTerrainCreated(GameObject go, bool isAsset)
         {
             if (isAsset)
                 return;
@@ -427,6 +441,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
+            if (_nodeEvents != null)
+            {
+                _nodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
+                _nodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
+            }
+
+            if (_sceneManager != null)
+                _sceneManager.OnPostTraverse -= SceneManager_OnPostTraverse;
+
             foreach (var set in Features)
             {
                 set?.Dispose();
@@ -633,7 +656,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             else
                 UnsafeUtility.SetLeakDetectionMode(NativeLeakDetectionMode.Disabled);
 
-            var cam = SceneManager.SceneManagerCamera.Camera;
+            var cam = _sceneManager.SceneManagerCamera.Camera;
             GenerateFrustumPlane(cam);
 
             if (cam.depthTextureMode != DepthTextureMode.Depth)
