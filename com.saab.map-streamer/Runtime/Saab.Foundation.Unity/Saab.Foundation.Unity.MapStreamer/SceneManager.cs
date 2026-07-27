@@ -53,6 +53,7 @@ using gzTexture = GizmoSDK.Gizmo3D.Texture;
 // Map utility
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
+using Saab.Foundation.Unity.MapStreamer.MapSessions;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
@@ -137,7 +138,6 @@ namespace Saab.Foundation.Unity.MapStreamer
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
         public ISceneManagerCamera  SceneManagerCamera;
-        public string               MapUrl { get; private set; }
         public NodeBuilderBase[] Builders;
 
         // Events ----------------------------------------------------------
@@ -160,9 +160,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         private gzCamera _native_camera;
         private Context _native_context;
         private CullTraverseAction _native_traverse_action;
-        private GameObject _root;
-
-        private readonly string ID = "Saab.Foundation.Unity.MapStreamer.SceneManager";
 
         //#pragma warning disable 414
         //private UnityPluginInitializer _plugin_initializer;
@@ -174,12 +171,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         private static readonly ProfilerMarker _profilerMarkerRender = new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
         private bool _initialized;
 
-        private INodeUpdateRegistry _nodeUpdateRegistry;
         private IExternalAssetQueue _externalAssetLoader;
         private GeometryBuilderRegistry _builderRegistry;
         private PooledNodeObjectPolicyRegistry _poolPolicyRegistry;
-        private NodeBuildCoordinator _buildCoordinator;
-        private IGeometryNodeOperations _geometryOperations;
 
         // Used by builders to share and manage texture resources
         private TextureManager _textureManager;
@@ -190,43 +184,35 @@ namespace Saab.Foundation.Unity.MapStreamer
         private SceneTraverser _sceneTraverser;
         private DynamicNodeLoadCoordinator _dynamicNodeLoadCoordinator;
         private NodeHandlePool _nodeHandlePool;
-        private NodeHierarchyUnloader _hierarchyUnloader;
         private ITraversalConfiguration _traversalConfiguration;
         private StreamingPipeline _streamingPipeline;
+        private MapSession _mapSession;
 
         [Inject]
         private void Construct(
-            INodeUpdateRegistry nodeUpdateRegistry,
             IExternalAssetQueue externalAssetLoader,
             GeometryBuilderRegistry builderRegistry,
             PooledNodeObjectPolicyRegistry poolPolicyRegistry,
-            NodeBuildCoordinator buildCoordinator,
-            IGeometryNodeOperations geometryOperations,
             TextureManager textureManager,
             MaterialManager materialManager,
             SceneTraverser sceneTraverser,
             DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
-            NodeHierarchyUnloader hierarchyUnloader,
             ITraversalConfiguration traversalConfiguration,
             StreamingPipeline streamingPipeline,
-            MapConfig mapConfig)
+            MapSession mapSession)
         {
-            _nodeUpdateRegistry = nodeUpdateRegistry;
             _externalAssetLoader = externalAssetLoader;
             _builderRegistry = builderRegistry;
             _poolPolicyRegistry = poolPolicyRegistry;
-            _buildCoordinator = buildCoordinator;
-            _geometryOperations = geometryOperations;
             _textureManager = textureManager;
             _materialManager = materialManager;
             _sceneTraverser = sceneTraverser;
             _dynamicNodeLoadCoordinator = dynamicNodeLoads;
             _nodeHandlePool = nodeHandlePool;
-            _hierarchyUnloader = hierarchyUnloader;
             _traversalConfiguration = traversalConfiguration;
             _streamingPipeline = streamingPipeline;
-            MapUrl = mapConfig.MapUrl;
+            _mapSession = mapSession;
         }
 
         public void AddBuilder(INodeBuilder builder)
@@ -261,140 +247,34 @@ namespace Saab.Foundation.Unity.MapStreamer
         // The LoadMap function takes an URL and loads the map into GizmoSDK native db
         public bool LoadMap(string mapURL)
         {
-            NodeLock.WaitLockEdit();      // We assume we do all editing from main thread and to allow render we assume we edit in edit mode
+            var result = _mapSession.Load(
+                mapURL,
+                _native_scene,
+                NotifyMapLoadError);
+            if (!result.Success)
+                return false;
 
-            try // We are now locked in edit
-            {
-
-                if (!ResetMap())
-                    return false;
-
-                Node node = null;
-
-                while (true)
-                {
-                    if (string.IsNullOrEmpty(mapURL))
-                        break;
-
-                    string errorString = "";
-                    SerializeAdapter.AdapterError errorType = SerializeAdapter.AdapterError.NO_ERROR;
-                    bool retry = false;
-                    node = DbManager.LoadDB(mapURL, ref errorString, ref errorType);
-
-                    if (node == null || !node.IsValid())
-                    {
-                        Message.Send(ID, MessageLevel.WARNING, $"Failed to load map {mapURL}");
-
-                        OnMapLoadError?.Invoke(ref mapURL, errorString, errorType, ref retry);
-
-
-                        if (retry)
-                        {
-                            continue;
-                        }
-
-                        return false;
-                    }
-
-                    break;
-                }
-
-                MapUrl = mapURL;
-
-                MapControl.SystemMap.NodeURL = mapURL;
-                MapControl.SystemMap.CurrentMap = node;
-
-                
-
-                if (node != null)
-                {
-                    _native_scene.AddNode(MapControl.SystemMap.CurrentMap);
-#if DEBUG
-                    _native_scene.Debug();
-#endif
-
-                    _root = new GameObject("root");
-                    GameObject scene = _sceneTraverser.Begin(MapControl.SystemMap.CurrentMap);
-
-                    if (scene != null)
-                        scene.transform.SetParent(_root.transform, false);
-
-                    // As GizmoSDK has a flipped Z axis going out of the screen we need a top transform to flip Z
-                    _root.transform.localScale = new Vector3(1, 1, -1);
-                }
-                
-                
-
-                //// Add example object under ROI --------------------------------------------------------------
-
-                //MapPos mapPos;
-
-                //GetMapPosition(new LatPos(1.0084718541, 0.24984267815, 300), out mapPos, GroundClampType.GROUND, true);
-
-                //_test = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-
-                //_test.transform.parent = FindFirstGameObjectTransform(mapPos.roiNode);
-                //_test.transform.localPosition = mapPos.position.ToVector3();
-                //_test.transform.localScale = new Vector3(10, 10, 10);
-
-                if (SceneManagerCamera != null)
-                    SceneManagerCamera.MapChanged();
-
-                OnMapChanged?.Invoke(node);
-            }
-            finally
-            {
-                NodeLock.UnLock();
-            }
-
+            SceneManagerCamera?.MapChanged();
+            OnMapChanged?.Invoke(result.RootNode);
             return true;
         }
 
         public bool ResetMap()
         {
-            //MapUrl = null;
-
-            NodeLock.WaitLockEdit();
-
-            try // We are now locked in edit
-            {
-
-                _dynamicNodeLoadCoordinator?.Reset();
-
-                // allow builders to perform custom clean up
-                _builderRegistry.Reset();
-                _geometryOperations?.Reset();
-
-                if (_root)
-                {
-                    _hierarchyUnloader.Unload(_root.transform);
-                    _nodeHandlePool.QueueFree(_root.transform);
-                    _nodeHandlePool.ProcessPending(int.MaxValue);
-                    _root = null;
-                }
-
-                _native_scene?.RemoveAllNodes();
-
-                _textureManager.Clear();
-                _materialManager.Clear();
-
-                // clear all pending asset loads
-                _sceneTraverser.AssetPolicy.ClearDeferred();
-
-                // clear any pending builds
-                _buildCoordinator.Clear();
-                _nodeUpdateRegistry.Clear();
-                _externalAssetLoader.Clear();
-
-                MapControl.SystemMap.Reset();
-            }
-            finally
-            {
-                NodeLock.UnLock();
-            }
-
+            _mapSession.Reset(_native_scene);
             return true;
         }
+
+        private void NotifyMapLoadError(
+            ref string url,
+            string error,
+            SerializeAdapter.AdapterError errorType,
+            ref bool retry) =>
+            OnMapLoadError?.Invoke(
+                ref url,
+                error,
+                errorType,
+                ref retry);
 
         private void AddDefaultBuilders()
         {
@@ -547,7 +427,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return false;
 
             // Load the map
-            if (loadMap && !LoadMap(MapUrl))
+            if (loadMap && !LoadMap(_mapSession.MapUrl))
                 return false;
 
             return true;
