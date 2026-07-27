@@ -65,6 +65,7 @@ using System;
 
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
+using VContainer;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
@@ -101,7 +102,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         /// Render during component update, disable to manually control when render is performed
         /// </summary>
         RenderInUpdate = 1 << 0,
-        
+
         /// <summary>
         /// Skip asset loading and ignore RefNodes
         /// </summary>
@@ -131,6 +132,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
 
     [RequireComponent(typeof(NodeEvents))]
+    [RequireComponent(typeof(MapStreamerLifetimeScope))]
     public class SceneManager : MonoBehaviour
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
@@ -174,80 +176,51 @@ namespace Saab.Foundation.Unity.MapStreamer
         private static readonly ProfilerMarker _profilerMarkerTraverse = new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
         private bool _initialized;
 
-        private readonly NodeUpdateRegistry _nodeUpdateRegistry =
-            new NodeUpdateRegistry();
-        private readonly ExternalAssetLoader _externalAssetLoader =
-            new ExternalAssetLoader();
-        private NodeHandleFactory _nodeHandleFactory;
-
-        private readonly GeometryBuilderRegistry _builderRegistry =
-            new GeometryBuilderRegistry();
-        private readonly NodeBuildScheduler _buildScheduler =
-            new NodeBuildScheduler();
-        private GeometryNodeOperations _geometryOperations;
+        private INodeUpdateRegistry _nodeUpdateRegistry;
+        private IExternalAssetQueue _externalAssetLoader;
+        private GeometryBuilderRegistry _builderRegistry;
+        private NodeBuildScheduler _buildScheduler;
+        private IGeometryNodeOperations _geometryOperations;
 
         // Used by builders to share and manage texture resources
-        private readonly TextureManager _textureManager = new TextureManager();
+        private TextureManager _textureManager;
 
         // Used by builders to share and manage Material resources
-        private readonly MaterialManager _materialManager = new MaterialManager();
+        private MaterialManager _materialManager;
 
         private SceneTraverser _sceneTraverser;
-        private DynamicNodeLoadCoordinator _dynamicNodeLoads;
+        private DynamicNodeLoadCoordinator _dynamicNodeLoadCoordinator;
         private NodeHandlePool _nodeHandlePool;
         private NodeHierarchyUnloader _hierarchyUnloader;
-        private NodeEvents _nodeEvents;
+        private ITraversalConfiguration _traversalConfiguration;
 
-        private NodeEvents NodeEvents
+        [Inject]
+        private void Construct(
+            INodeUpdateRegistry nodeUpdateRegistry,
+            IExternalAssetQueue externalAssetLoader,
+            GeometryBuilderRegistry builderRegistry,
+            NodeBuildScheduler buildScheduler,
+            IGeometryNodeOperations geometryOperations,
+            TextureManager textureManager,
+            MaterialManager materialManager,
+            SceneTraverser sceneTraverser,
+            DynamicNodeLoadCoordinator dynamicNodeLoads,
+            NodeHandlePool nodeHandlePool,
+            NodeHierarchyUnloader hierarchyUnloader,
+            ITraversalConfiguration traversalConfiguration)
         {
-            get
-            {
-                if (_nodeEvents == null)
-                    _nodeEvents = GetComponent<NodeEvents>();
-
-                return _nodeEvents;
-            }
-        }
-
-        private void Awake()
-        {
-            _nodeEvents = GetComponent<NodeEvents>();
-
-            if (_nodeEvents == null)
-                _nodeEvents = gameObject.AddComponent<NodeEvents>();
-        }
-
-        private SceneTraverser SceneTraverser
-        {
-            get
-            {
-                if (_sceneTraverser == null)
-                {
-                    if (_nodeHandleFactory == null)
-                        _nodeHandleFactory =
-                            new NodeHandleFactory(_nodeHandlePool.Allocate);
-
-                    if (_geometryOperations == null)
-                    {
-                        _geometryOperations = new GeometryNodeOperations(
-                            _builderRegistry,
-                            _buildScheduler,
-                            _nodeHandleFactory,
-                            NodeEvents);
-                    }
-
-                    _sceneTraverser =
-                        new SceneTraverser(
-                            this,
-                            NodeEvents,
-                            _nodeUpdateRegistry,
-                            _externalAssetLoader,
-                            _nodeHandleFactory,
-                            _geometryOperations);
-                }
-
-                return _sceneTraverser;
-            }
+            _nodeUpdateRegistry = nodeUpdateRegistry;
+            _externalAssetLoader = externalAssetLoader;
+            _builderRegistry = builderRegistry;
+            _buildScheduler = buildScheduler;
+            _geometryOperations = geometryOperations;
+            _textureManager = textureManager;
+            _materialManager = materialManager;
+            _sceneTraverser = sceneTraverser;
+            _dynamicNodeLoadCoordinator = dynamicNodeLoads;
+            _nodeHandlePool = nodeHandlePool;
+            _hierarchyUnloader = hierarchyUnloader;
+            _traversalConfiguration = traversalConfiguration;
         }
 
         public void AddBuilder(INodeBuilder builder)
@@ -319,7 +292,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 #endif
 
                     _root = new GameObject("root");
-                    GameObject scene = SceneTraverser.Begin(MapControl.SystemMap.CurrentMap);
+                    GameObject scene = _sceneTraverser.Begin(MapControl.SystemMap.CurrentMap);
 
                     if (scene != null)
                         scene.transform.SetParent(_root.transform, false);
@@ -364,7 +337,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             try // We are now locked in edit
             {
 
-                _dynamicNodeLoads?.Reset();
+                _dynamicNodeLoadCoordinator?.Reset();
 
                 // allow builders to perform custom clean up
                 _builderRegistry.Reset();
@@ -384,7 +357,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _materialManager.Clear();
 
                 // clear all pending asset loads
-                SceneTraverser.AssetPolicy.ClearDeferred();
+                _sceneTraverser.AssetPolicy.ClearDeferred();
 
                 // clear any pending builds
                 _buildScheduler.Clear();
@@ -437,16 +410,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 builder.SetMaterialManager(_materialManager);
             }
 
-            if (_nodeHandlePool == null)
-                _nodeHandlePool = new NodeHandlePool(_textureManager, NodeEvents);
-
             _nodeHandlePool.Initialize(_builderRegistry);
-
-            if (_hierarchyUnloader == null)
-            {
-                _hierarchyUnloader =
-                    new NodeHierarchyUnloader(_nodeUpdateRegistry);
-            }
 
             if (!_nodeHandlePool.HasPool(PoolObjectFeature.StaticMesh))
             {
@@ -454,15 +418,9 @@ namespace Saab.Foundation.Unity.MapStreamer
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "disabling instancing, no builder for StaticMesh feature");
             }
 
-        
-
-
-            _dynamicNodeLoads = new DynamicNodeLoadCoordinator(
-                SceneTraverser.Begin,
-                _hierarchyUnloader.Unload,
-                _nodeHandlePool.QueueFree);
-            _dynamicNodeLoads.Subscribe();
-            SceneTraverser.SetActionReceiver(_dynamicNodeLoads.ActionReceiver);
+            _traversalConfiguration.Update(Settings);
+            _dynamicNodeLoadCoordinator.Subscribe();
+            _sceneTraverser.SetActionReceiver(_dynamicNodeLoadCoordinator.ActionReceiver);
 
             
             NodeLock.WaitLockEdit();
@@ -543,9 +501,8 @@ namespace Saab.Foundation.Unity.MapStreamer
                 NodeLock.UnLock();
             }
 
-            _dynamicNodeLoads?.Dispose();
-            _dynamicNodeLoads = null;
-            SceneTraverser.SetActionReceiver(null);
+            _dynamicNodeLoadCoordinator.Unsubscribe();
+            _sceneTraverser.SetActionReceiver(null);
 
             // Dont do this as Unity wants to keep modules loaded
             //// Drop platform streamer
@@ -604,10 +561,11 @@ namespace Saab.Foundation.Unity.MapStreamer
         private void ProcessPendingUpdatesPreTraversal()
         {
             // We must be called in edit lock
+            _traversalConfiguration.Update(Settings);
 
             // Process changes of the scenegraph
             _profilerMarkerTraverse.Begin();
-            _dynamicNodeLoads.ProcessLoads();
+            _dynamicNodeLoadCoordinator.ProcessLoads();
             _profilerMarkerTraverse.End();
         }
 
@@ -617,7 +575,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             #region Activate/Deactivate GameObjects based on scenegraph -----------------------------------------------------
 
-            _dynamicNodeLoads.ProcessActivations();
+            _dynamicNodeLoadCoordinator.ProcessActivations();
 
             #endregion
 
@@ -714,7 +672,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return;
 
 
-            if (_dynamicNodeLoads.HasPendingLoads) // Check if we got a mismatch in updates
+            if (_dynamicNodeLoadCoordinator.HasPendingLoads) // Check if we got a mismatch in updates
             {
                 NodeLock.UnLock(); // Unlock render
                 Message.Send(ID, MessageLevel.FATAL, "Mismatch in virtual context (loaded/unloaded data)");

@@ -25,6 +25,7 @@ using System.Linq;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
+using VContainer;
 
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
@@ -71,8 +72,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class FoliageModule : MonoBehaviour
     {
-        public SceneManager SceneManager;
-        public NodeEvents NodeEvents;
+        private SceneManager _sceneManager;
+        private NodeEvents _nodeEvents;
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
 
@@ -157,6 +158,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
+        [Inject]
+        private void Construct(
+            SceneManager sceneManager,
+            NodeEvents nodeEvents)
+        {
+            _sceneManager = sceneManager;
+            _nodeEvents = nodeEvents;
+        }
+
         // Start is called before the first frame update
         void Start()
         {
@@ -164,16 +174,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             StartCoroutine(WaitForDepth());
 
-            if (NodeEvents == null)
-                NodeEvents = FindObjectOfType<NodeEvents>();
+            _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
+            _nodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
 
-            if (NodeEvents != null)
-            {
-                NodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
-                NodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
-            }
-
-            SceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
+            _sceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
 
             for (int i = 0; i < Features.Count; i++)
             {
@@ -437,11 +441,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
-            if (NodeEvents != null)
+            if (_nodeEvents != null)
             {
-                NodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
-                NodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
+                _nodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
+                _nodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
             }
+
+            if (_sceneManager != null)
+                _sceneManager.OnPostTraverse -= SceneManager_OnPostTraverse;
 
             foreach (var set in Features)
             {
@@ -649,7 +656,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             else
                 UnsafeUtility.SetLeakDetectionMode(NativeLeakDetectionMode.Disabled);
 
-            var cam = SceneManager.SceneManagerCamera.Camera;
+            var cam = _sceneManager.SceneManagerCamera.Camera;
             GenerateFrustumPlane(cam);
 
             if (cam.depthTextureMode != DepthTextureMode.Depth)

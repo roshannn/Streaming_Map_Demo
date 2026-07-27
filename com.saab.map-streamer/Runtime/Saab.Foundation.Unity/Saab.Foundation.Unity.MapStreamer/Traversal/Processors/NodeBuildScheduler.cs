@@ -15,13 +15,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             switch (builder.Priority)
             {
                 case BuildPriority.Immediate:
-                    if (builder.Build(context.NodeHandle, context.ActiveStateNode))
-                        context.NodeHandle.builder = builder;
+                    context.Node.Build(
+                        builder,
+                        context.ActiveStateNode);
                     break;
                 case BuildPriority.Low:
                     _pending.Enqueue(new PendingNodeBuild(
                         builder,
-                        context.NodeHandle,
+                        context.Node,
                         context.ActiveStateNode));
                     break;
                 default:
@@ -36,17 +37,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             while (_pending.Count > 0 && timer.Elapsed < maxBuildTime)
             {
                 var build = _pending.Dequeue();
-                var nodeHandle = build.NodeHandle;
+                var node = build.Node;
 
-                if (build.Version != nodeHandle.version)
+                if (build.Version != node.Version)
                     continue;
 
                 var activeStateNode = build.ActiveStateNode;
-                if (activeStateNode != null && activeStateNode.node == null)
+                if (activeStateNode.IsValid &&
+                    !activeStateNode.HasNativeNode)
                     continue;
 
-                if (build.Builder.Build(nodeHandle, activeStateNode))
-                    nodeHandle.builder = build.Builder;
+                node.Build(build.Builder, activeStateNode);
             }
         }
 

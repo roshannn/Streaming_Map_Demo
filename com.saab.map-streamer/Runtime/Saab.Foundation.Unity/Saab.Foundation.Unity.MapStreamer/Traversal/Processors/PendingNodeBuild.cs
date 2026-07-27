@@ -6,18 +6,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
     {
         public PendingNodeBuild(
             INodeBuilder builder,
-            NodeHandle nodeHandle,
-            NodeHandle activeStateNode)
+            TraversalNode node,
+            TraversalNode activeStateNode)
         {
             Builder = builder;
-            NodeHandle = nodeHandle;
+            Node = node;
             ActiveStateNode = activeStateNode;
-            Version = nodeHandle.version;
+            Version = node.Version;
         }
 
         public INodeBuilder Builder { get; }
-        public NodeHandle NodeHandle { get; }
-        public NodeHandle ActiveStateNode { get; }
+        public TraversalNode Node { get; }
+        public TraversalNode ActiveStateNode { get; }
         public byte Version { get; }
     }
 }

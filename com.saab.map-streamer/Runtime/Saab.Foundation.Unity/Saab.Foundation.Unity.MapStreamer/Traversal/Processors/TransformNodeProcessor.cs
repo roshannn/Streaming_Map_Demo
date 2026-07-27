@@ -21,11 +21,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             gzTransform node,
             ref TraversalContext context)
         {
-            var gameObject = context.NodeHandle.gameObject;
+            var gameObject = context.Node.GameObject;
             NodeTransformApplicator.Apply(node, gameObject.transform);
             _hierarchy.TraverseChildren(node, in context);
 
-            return TraversalResult.Created(gameObject);
+            return TraversalResult.Created(context.Node);
         }
     }
 }

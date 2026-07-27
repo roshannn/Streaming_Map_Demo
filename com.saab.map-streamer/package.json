@@ -4,6 +4,9 @@
   "displayName": "map-streamer",
   "description": "todo",
   "unity": "2023.3",
+  "dependencies": {
+    "jp.hadashikick.vcontainer": "1.19.0"
+  },
   "author": {
     "name": "SAAB AB"
   }

@@ -6,8 +6,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
 {
     internal struct TraversalContext
     {
-        public NodeHandle NodeHandle;
-        public NodeHandle ActiveStateNode;
+        public TraversalNode Node;
+        public TraversalNode ActiveStateNode;
         public TraversalState TraversalStateFlags;
         public IntersectMaskValue IntersectMask;
     }

@@ -4,8 +4,8 @@ using GizmoSDK.Gizmo3D;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
-    internal interface INodeHandleFactory
+    internal interface ITraversalNodeFactory
     {
-        NodeHandle Create(Node node, PoolObjectFeature feature);
+        TraversalNode Create(Node node, PoolObjectFeature feature);
     }
 }

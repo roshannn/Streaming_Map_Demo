@@ -4,7 +4,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
     internal interface INodeUpdateRegistry
     {
-        void RegisterForUpdate(NodeHandle nodeHandle);
+        void RegisterForUpdate(TraversalNode node);
         void Unregister(NodeHandle nodeHandle);
         void UpdateNodes();
         void Clear();

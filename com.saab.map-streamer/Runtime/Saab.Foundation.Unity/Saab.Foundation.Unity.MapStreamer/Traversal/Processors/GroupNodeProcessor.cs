@@ -21,7 +21,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             ref TraversalContext context)
         {
             _hierarchy.TraverseChildren(node, in context);
-            return TraversalResult.Created(context.NodeHandle.gameObject);
+            return TraversalResult.Created(context.Node);
         }
     }
 }

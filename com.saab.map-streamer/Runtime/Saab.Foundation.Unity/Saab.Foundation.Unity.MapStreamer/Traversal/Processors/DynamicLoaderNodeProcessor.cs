@@ -20,12 +20,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 
             NodeUtils.AddGameObjectReferenceUnsafe(
                 node.GetNativeReference(),
-                context.NodeHandle.gameObject);
+                context.Node.GameObject);
 
-            context.NodeHandle.inNodeUtilsRegistry = true;
-            NodeEvents.NotifyLoaderCreated(context.NodeHandle.gameObject, false);
+            context.Node.MarkRegisteredInNodeUtils();
+            NodeEvents.NotifyLoaderCreated(context.Node.GameObject, false);
 
-            return TraversalResult.Created(context.NodeHandle.gameObject);
+            return TraversalResult.Created(context.Node);
         }
     }
 }

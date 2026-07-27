@@ -17,15 +17,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         public void Inject(IReferenceNodeOperations dependency) =>
             _operations = dependency;
 
-        public override bool RequiresDefaultNodeHandle => false;
+        public override bool RequiresDefaultTraversalNode => false;
 
         protected override TraversalResult Process(
             RefNode node,
             ref TraversalContext context)
         {
-            var gameObject = _operations.Process(node, in context);
-            return gameObject != null
-                ? TraversalResult.Created(gameObject)
+            var traversalNode = _operations.Process(node, in context);
+            return traversalNode.IsValid
+                ? TraversalResult.Created(traversalNode)
                 : TraversalResult.Skipped();
         }
     }

@@ -10,14 +10,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
     {
         public CrossboardNodeProcessor(NodeEvents nodeEvents) : base(nodeEvents) { }
 
-        public override bool RequiresDefaultNodeHandle => false;
+        public override bool RequiresDefaultTraversalNode => false;
 
         protected override TraversalResult Process(
             Crossboard node,
             ref TraversalContext context)
         {
             NodeEvents.NotifyCrossboardCreated(
-                context.NodeHandle.gameObject,
+                context.Node.GameObject,
                 context.TraversalStateFlags.HasFlag(TraversalState.Asset));
             return TraversalResult.Handled();
         }

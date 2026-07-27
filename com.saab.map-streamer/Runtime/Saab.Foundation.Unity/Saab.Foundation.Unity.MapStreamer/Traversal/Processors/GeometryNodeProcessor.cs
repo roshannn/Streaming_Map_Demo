@@ -17,7 +17,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         public void Inject(IGeometryNodeOperations dependency) =>
             _operations = dependency;
 
-        public override bool RequiresDefaultNodeHandle => false;
+        public override bool RequiresDefaultTraversalNode => false;
 
         protected override TraversalResult Process(
             Geometry node,

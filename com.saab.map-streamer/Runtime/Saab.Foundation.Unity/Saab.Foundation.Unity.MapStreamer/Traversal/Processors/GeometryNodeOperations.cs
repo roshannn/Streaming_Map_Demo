@@ -2,7 +2,6 @@
 
 using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
-using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
@@ -10,7 +9,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
     {
         private readonly GeometryBuilderRegistry _builders;
         private readonly NodeBuildScheduler _scheduler;
-        private readonly INodeHandleFactory _nodeHandles;
+        private readonly ITraversalNodeFactory _nodes;
         private readonly NodeEvents _nodeEvents;
         private readonly AssetInstanceBuilder _assetInstances =
             new AssetInstanceBuilder();
@@ -18,16 +17,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         public GeometryNodeOperations(
             GeometryBuilderRegistry builders,
             NodeBuildScheduler scheduler,
-            INodeHandleFactory nodeHandles,
+            ITraversalNodeFactory nodes,
             NodeEvents nodeEvents)
         {
             _builders = builders;
             _scheduler = scheduler;
-            _nodeHandles = nodeHandles;
+            _nodes = nodes;
             _nodeEvents = nodeEvents;
         }
 
-        public GameObject Process(Geometry geometry, in TraversalContext context)
+        public TraversalNode Process(
+            Geometry geometry,
+            in TraversalContext context)
         {
             var state = context;
             var isAssetInstance =
@@ -36,48 +37,50 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 
             if (isAssetInstance)
             {
-                state.NodeHandle =
-                    _nodeHandles.Create(geometry, PoolObjectFeature.StaticMesh);
-                state.NodeHandle.stateFlags |= NodeStateFlags.AssetInstance;
+                state.Node =
+                    _nodes.Create(geometry, PoolObjectFeature.StaticMesh);
+                state.Node.MarkAsAssetInstance();
                 _scheduler.Build(_assetInstances, in state);
             }
             else
             {
                 var builder = _builders.Resolve(geometry, in state);
-                state.NodeHandle = _nodeHandles.Create(
+                state.Node = _nodes.Create(
                     geometry,
                     builder?.Feature ?? PoolObjectFeature.None);
 
                 if (builder != null)
                 {
                     if (geometry.HasState())
-                        state.ActiveStateNode = state.NodeHandle;
+                        state.ActiveStateNode = state.Node;
 
                     _scheduler.Build(builder, in state);
                 }
 
                 if (state.TraversalStateFlags.HasFlag(TraversalState.Asset))
-                    _assetInstances.AddAssetPrefab(geometry, state.NodeHandle);
+                    state.Node.RegisterAssetPrefab(
+                        geometry,
+                        _assetInstances);
             }
 
             var isAsset =
                 state.TraversalStateFlags.HasFlag(TraversalState.Asset);
 
-            switch (state.NodeHandle.featureKey)
+            switch (state.Node.Feature)
             {
                 case PoolObjectFeature.Terrain:
                     _nodeEvents.NotifyTerrainCreated(
-                        state.NodeHandle.gameObject,
+                        state.Node.GameObject,
                         isAsset);
                     break;
                 case PoolObjectFeature.StaticMesh:
                     _nodeEvents.NotifyGeometryCreated(
-                        state.NodeHandle.gameObject,
+                        state.Node.GameObject,
                         isAsset);
                     break;
             }
 
-            return state.NodeHandle.gameObject;
+            return state.Node;
         }
 
         public void Reset()

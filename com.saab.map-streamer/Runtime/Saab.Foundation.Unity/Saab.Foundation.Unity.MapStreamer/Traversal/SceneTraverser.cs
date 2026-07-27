@@ -12,32 +12,32 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
 {
     internal sealed class SceneTraverser : IHierarchyTraversal
     {
-        private readonly SceneManager _sceneManager;
+        private readonly ITraversalConfiguration _configuration;
         private readonly IntersectionTraversalFilter _intersectionFilter;
         private readonly NodeProcessorFactory _processorFactory;
         private readonly HierarchyTraversalHelper _hierarchyHelper;
-        private readonly INodeHandleFactory _nodeHandleFactory;
+        private readonly ITraversalNodeFactory _nodeFactory;
         private NodeAction _actionReceiver;
 
         public SceneTraverser(
-            SceneManager sceneManager,
+            ITraversalConfiguration configuration,
             NodeEvents nodeEvents,
             INodeUpdateRegistry nodeUpdateRegistry,
             IExternalAssetQueue externalAssetQueue,
-            INodeHandleFactory nodeHandleFactory,
+            ITraversalNodeFactory nodeFactory,
             IGeometryNodeOperations geometryOperations)
         {
-            _sceneManager = sceneManager;
+            _configuration = configuration;
             _intersectionFilter = new IntersectionTraversalFilter();
-            _nodeHandleFactory = nodeHandleFactory;
+            _nodeFactory = nodeFactory;
             AssetPolicy = new AssetTraversalPolicy();
             _hierarchyHelper = new HierarchyTraversalHelper(this);
 
             var referenceOperations = new ReferenceNodeOperations(
                 this,
                 AssetPolicy,
-                nodeHandleFactory,
-                () => sceneManager.Settings.Options);
+                nodeFactory,
+                configuration);
 
             var composer = new NodeProcessorComposer(
                 this,
@@ -68,30 +68,30 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             var filterResult =
                 _intersectionFilter.Evaluate(
                     node,
-                    _sceneManager.Settings.IntersectMask,
+                    _configuration.IntersectMask,
                     ref context);
 
             if (filterResult.HasValue)
                 return filterResult.Value;
 
             var assetResult =
-                AssetPolicy.Evaluate(node, _sceneManager.Settings.Options, ref context);
+                AssetPolicy.Evaluate(node, _configuration.Options, ref context);
 
             if (assetResult.HasValue)
                 return assetResult.Value;
 
             var processor = _processorFactory.Resolve(node);
 
-            if (processor != null && !processor.RequiresDefaultNodeHandle)
+            if (processor != null && !processor.RequiresDefaultTraversalNode)
                 return processor.Process(node, ref context);
 
-            context.NodeHandle =
-                _nodeHandleFactory.Create(node, PoolObjectFeature.None);
+            context.Node =
+                _nodeFactory.Create(node, PoolObjectFeature.None);
 
             if (node.HasState())
-                context.ActiveStateNode = context.NodeHandle;
+                context.ActiveStateNode = context.Node;
 
-            var gameObject = context.NodeHandle.gameObject;
+            var gameObject = context.Node.GameObject;
 
             if (node.CullMask == CullMaskValue.ALL)
                 gameObject.SetActive(false);
@@ -99,7 +99,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             if (processor != null)
                 return processor.Process(node, ref context);
 
-            return TraversalResult.Created(gameObject);
+            return TraversalResult.Created(context.Node);
         }
 
         public void SetActionReceiver(NodeAction actionReceiver)

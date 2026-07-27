@@ -1,8 +1,6 @@
 // Copyright 2021 saab AB
 
-using System;
 using GizmoSDK.Gizmo3D;
-using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
@@ -10,26 +8,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
     {
         private readonly SceneTraverser _traverser;
         private readonly AssetTraversalPolicy _assetPolicy;
-        private readonly INodeHandleFactory _nodeHandles;
-        private readonly Func<SceneManagerOptions> _options;
+        private readonly ITraversalNodeFactory _nodes;
+        private readonly ITraversalConfiguration _configuration;
 
         public ReferenceNodeOperations(
             SceneTraverser traverser,
             AssetTraversalPolicy assetPolicy,
-            INodeHandleFactory nodeHandles,
-            Func<SceneManagerOptions> options)
+            ITraversalNodeFactory nodes,
+            ITraversalConfiguration configuration)
         {
             _traverser = traverser;
             _assetPolicy = assetPolicy;
-            _nodeHandles = nodeHandles;
-            _options = options;
+            _nodes = nodes;
+            _configuration = configuration;
         }
 
-        public GameObject Process(RefNode refNode, in TraversalContext context)
+        public TraversalNode Process(
+            RefNode refNode,
+            in TraversalContext context)
         {
-            var options = _options();
+            var options = _configuration.Options;
             if (_assetPolicy.IsInstancingDisabled(options))
-                return null;
+                return default;
 
             var state = context;
 
@@ -49,16 +49,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
                     ref assetContext).GameObject;
 
                 asset.transform.SetParent(
-                    deferredTraversal.TraversalContext.NodeHandle.transform);
+                    deferredTraversal.TraversalContext.Node.Transform);
             }
 
             refNode.AttachNode();
-            state.NodeHandle =
-                _nodeHandles.Create(refNode, PoolObjectFeature.None);
+            state.Node =
+                _nodes.Create(refNode, PoolObjectFeature.None);
             state.TraversalStateFlags |= TraversalState.AssetInstance;
             _traverser.TraverseChildren(refNode, in state);
 
-            return state.NodeHandle.gameObject;
+            return state.Node;
         }
     }
 }

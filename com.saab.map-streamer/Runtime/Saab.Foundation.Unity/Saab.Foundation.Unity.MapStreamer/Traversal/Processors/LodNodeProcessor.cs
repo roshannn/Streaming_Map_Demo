@@ -22,10 +22,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         {
             _hierarchy.TraverseChildren(node, in context, true);
             NodeEvents.NotifyLodCreated(
-                context.NodeHandle.gameObject,
+                context.Node.GameObject,
                 context.TraversalStateFlags.HasFlag(TraversalState.Asset));
 
-            return TraversalResult.Created(context.NodeHandle.gameObject);
+            return TraversalResult.Created(context.Node);
         }
     }
 }

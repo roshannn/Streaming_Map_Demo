@@ -20,9 +20,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             ExtRef node,
             ref TraversalContext context)
         {
-            var gameObject = context.NodeHandle.gameObject;
+            var gameObject = context.Node.GameObject;
             _assetQueue.Enqueue(gameObject, node.ResourceURL, node.ObjectID);
-            return TraversalResult.Created(gameObject);
+            return TraversalResult.Created(context.Node);
         }
     }
 }

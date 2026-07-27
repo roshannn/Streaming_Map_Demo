@@ -23,11 +23,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             Roi node,
             ref TraversalContext context)
         {
-            _updates.RegisterForUpdate(context.NodeHandle);
-            NodeTransformApplicator.Apply(node, context.NodeHandle.transform);
+            _updates.RegisterForUpdate(context.Node);
+            NodeTransformApplicator.Apply(node, context.Node.Transform);
             _hierarchy.TraverseChildren(node, in context, true);
 
-            return TraversalResult.Created(context.NodeHandle.gameObject);
+            return TraversalResult.Created(context.Node);
         }
     }
 }

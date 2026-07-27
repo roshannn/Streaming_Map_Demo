@@ -7,7 +7,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
     internal abstract class NodeProcessor
     {
-        public virtual bool RequiresDefaultNodeHandle => true;
+        public virtual bool RequiresDefaultTraversalNode => true;
 
         public abstract TraversalResult Process(
             Node node,

@@ -10,11 +10,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         private readonly LinkedList<GameObject> _nodes =
             new LinkedList<GameObject>();
 
-        public void RegisterForUpdate(NodeHandle nodeHandle)
+        public void RegisterForUpdate(TraversalNode node)
         {
-            nodeHandle.updateTransform = true;
-            nodeHandle.inNodeUpdateList = true;
-            _nodes.AddLast(nodeHandle.gameObject);
+            node.EnableTransformUpdates();
+            _nodes.AddLast(node.GameObject);
         }
 
         public void Unregister(NodeHandle nodeHandle)

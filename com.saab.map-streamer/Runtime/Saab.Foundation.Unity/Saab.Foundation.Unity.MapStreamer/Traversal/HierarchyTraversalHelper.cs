@@ -21,7 +21,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             bool addActionInterfaces,
             NodeAction actionReceiver)
         {
-            var parent = context.NodeHandle.transform;
+            var parent = context.Node.Transform;
 
             foreach (var child in group)
             {
@@ -34,7 +34,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
                 var gameObject = result.GameObject;
 
                 if (addActionInterfaces)
-                    RegisterActionInterfaces(child, gameObject, actionReceiver);
+                    RegisterActionInterfaces(
+                        child,
+                        result.Node,
+                        actionReceiver);
 
                 gameObject.transform.SetParent(parent, false);
             }
@@ -42,17 +45,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
 
         private static void RegisterActionInterfaces(
             Node child,
-            UnityEngine.GameObject gameObject,
+            TraversalNode node,
             NodeAction actionReceiver)
         {
             var childPtr = child.GetNativeReference();
             if (NodeUtils.HasGameObjectsUnsafe(childPtr))
                 return;
 
-            NodeUtils.AddGameObjectReferenceUnsafe(childPtr, gameObject);
+            NodeUtils.AddGameObjectReferenceUnsafe(
+                childPtr,
+                node.GameObject);
 
-            var childNodeHandle = gameObject.GetComponent<NodeHandle>();
-            childNodeHandle.inNodeUtilsRegistry = true;
+            node.MarkRegisteredInNodeUtils();
 
             child.AddActionInterface(actionReceiver, NodeActionEvent.IS_TRAVERSABLE);
             child.AddActionInterface(actionReceiver, NodeActionEvent.IS_NOT_TRAVERSABLE);

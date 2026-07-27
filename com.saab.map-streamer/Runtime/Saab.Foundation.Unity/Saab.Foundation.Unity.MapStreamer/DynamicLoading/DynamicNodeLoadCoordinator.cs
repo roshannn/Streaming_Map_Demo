@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using GizmoSDK.GizmoBase;
 using GizmoSDK.Gizmo3D;
 
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Utility.Unity.NodeUtils;
 
 using UnityEngine;
@@ -29,13 +31,13 @@ namespace Saab.Foundation.Unity.MapStreamer.DynamicLoading
         private bool _subscribed;
 
         public DynamicNodeLoadCoordinator(
-            Func<Node, GameObject> traverse,
-            Action<unTransform> unloadHierarchy,
-            Action<unTransform> free)
+            SceneTraverser traverser,
+            NodeHierarchyUnloader hierarchyUnloader,
+            NodeHandlePool nodeHandlePool)
         {
-            _traverse = traverse;
-            _unloadHierarchy = unloadHierarchy;
-            _free = free;
+            _traverse = traverser.Begin;
+            _unloadHierarchy = hierarchyUnloader.Unload;
+            _free = nodeHandlePool.QueueFree;
 
             ActionReceiver = new NodeAction("DynamicLoadManager");
         }
@@ -51,6 +53,16 @@ namespace Saab.Foundation.Unity.MapStreamer.DynamicLoading
             ActionReceiver.OnAction += OnAction;
             DynamicLoader.OnDynamicLoad += OnDynamicLoad;
             _subscribed = true;
+        }
+
+        public void Unsubscribe()
+        {
+            if (!_subscribed)
+                return;
+
+            DynamicLoader.OnDynamicLoad -= OnDynamicLoad;
+            ActionReceiver.OnAction -= OnAction;
+            _subscribed = false;
         }
 
         public void ProcessLoads()
@@ -139,13 +151,7 @@ namespace Saab.Foundation.Unity.MapStreamer.DynamicLoading
 
         public void Dispose()
         {
-            if (_subscribed)
-            {
-                DynamicLoader.OnDynamicLoad -= OnDynamicLoad;
-                ActionReceiver.OnAction -= OnAction;
-                _subscribed = false;
-            }
-
+            Unsubscribe();
             Reset();
             ActionReceiver.Dispose();
         }
