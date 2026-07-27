@@ -121,6 +121,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
+        public Matrix4x4 NativeWorldToLocalMatrix =>
+            Camera.transform.worldToLocalMatrix;
+
         public Vec3D GlobalPosition
         {
             get { return MapControl.SystemMap.LocalToGlobal(_position); }

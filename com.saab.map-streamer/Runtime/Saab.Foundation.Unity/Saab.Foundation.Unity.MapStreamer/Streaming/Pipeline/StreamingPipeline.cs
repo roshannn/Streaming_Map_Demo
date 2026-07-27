@@ -217,7 +217,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                 }
 
                 context.NativeCamera.Transform =
-                    context.UnityCamera.transform.worldToLocalMatrix
+                    context.SceneCamera.NativeWorldToLocalMatrix
                         .ToZFlippedMatrix4();
                 context.NativeCamera.Position =
                     context.SceneCamera.GlobalPosition;

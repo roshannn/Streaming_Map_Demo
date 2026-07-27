@@ -74,6 +74,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     public interface ISceneManagerCamera
     {
         UnityEngine.Camera Camera { get; }
+        Matrix4x4 NativeWorldToLocalMatrix { get; }
         Vec3D GlobalPosition { get; set; }           // Position in Global coordinate system
 
         Vector3 Up { get; }                         // Get up vector in global coordinate system for current position
@@ -137,30 +138,19 @@ namespace Saab.Foundation.Unity.MapStreamer
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
         public ISceneManagerCamera  SceneManagerCamera;
-        public string               MapUrl { get; private set; }
         public NodeBuilderBase[] Builders;
 
         // Events ----------------------------------------------------------
 
-        public delegate void EventHandler_OnNode(Node node);
         public delegate void EventHandler_OnUpdateCamera(double renderTime);
-        public delegate void EventHandler_OnMapLoadError(ref string url,string errorString,SerializeAdapter.AdapterError errorType,ref bool retry);
 
         public delegate void EventHandler_Traverse(bool locked);    // Pre and Post traversal in locked or unlocked mode (edit)
 
         public event EventHandler_Traverse          OnPreTraverse;  // Called before SceneManagerCamera is updated
         public event EventHandler_Traverse          OnPostTraverse; // Called after SceneManagerCamera is updated
-        public event EventHandler_OnNode            OnMapChanged;
-        public event EventHandler_OnMapLoadError    OnMapLoadError;
         public event EventHandler_OnUpdateCamera    OnUpdateCamera; // Called after SceneManagerCamera is updated
 
         #region ------------- Privates ----------------
-
-        private Scene _native_scene;
-        private gzCamera _native_camera;
-        private Context _native_context;
-        private CullTraverseAction _native_traverse_action;
-        private GameObject _root;
 
         private readonly string ID = "Saab.Foundation.Unity.MapStreamer.SceneManager";
 
@@ -174,12 +164,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         private static readonly ProfilerMarker _profilerMarkerRender = new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
         private bool _initialized;
 
-        private INodeUpdateRegistry _nodeUpdateRegistry;
         private IExternalAssetQueue _externalAssetLoader;
         private GeometryBuilderRegistry _builderRegistry;
         private PooledNodeObjectPolicyRegistry _poolPolicyRegistry;
-        private NodeBuildCoordinator _buildCoordinator;
-        private IGeometryNodeOperations _geometryOperations;
 
         // Used by builders to share and manage texture resources
         private TextureManager _textureManager;
@@ -187,46 +174,33 @@ namespace Saab.Foundation.Unity.MapStreamer
         // Used by builders to share and manage Material resources
         private MaterialManager _materialManager;
 
-        private SceneTraverser _sceneTraverser;
-        private DynamicNodeLoadCoordinator _dynamicNodeLoadCoordinator;
         private NodeHandlePool _nodeHandlePool;
-        private NodeHierarchyUnloader _hierarchyUnloader;
         private ITraversalConfiguration _traversalConfiguration;
         private StreamingPipeline _streamingPipeline;
+        private MapSession _mapSession;
 
         [Inject]
         private void Construct(
-            INodeUpdateRegistry nodeUpdateRegistry,
             IExternalAssetQueue externalAssetLoader,
             GeometryBuilderRegistry builderRegistry,
             PooledNodeObjectPolicyRegistry poolPolicyRegistry,
-            NodeBuildCoordinator buildCoordinator,
-            IGeometryNodeOperations geometryOperations,
             TextureManager textureManager,
             MaterialManager materialManager,
-            SceneTraverser sceneTraverser,
-            DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
-            NodeHierarchyUnloader hierarchyUnloader,
             ITraversalConfiguration traversalConfiguration,
             StreamingPipeline streamingPipeline,
-            MapConfig mapConfig)
+            MapSession mapSession)
         {
-            _nodeUpdateRegistry = nodeUpdateRegistry;
             _externalAssetLoader = externalAssetLoader;
             _builderRegistry = builderRegistry;
             _poolPolicyRegistry = poolPolicyRegistry;
-            _buildCoordinator = buildCoordinator;
-            _geometryOperations = geometryOperations;
             _textureManager = textureManager;
             _materialManager = materialManager;
-            _sceneTraverser = sceneTraverser;
-            _dynamicNodeLoadCoordinator = dynamicNodeLoads;
             _nodeHandlePool = nodeHandlePool;
-            _hierarchyUnloader = hierarchyUnloader;
             _traversalConfiguration = traversalConfiguration;
             _streamingPipeline = streamingPipeline;
-            MapUrl = mapConfig.MapUrl;
+            _mapSession = mapSession;
+            _mapSession.MapChanged += HandleMapChanged;
         }
 
         public void AddBuilder(INodeBuilder builder)
@@ -258,143 +232,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             _poolPolicyRegistry.Add(policy);
         }
 
-        // The LoadMap function takes an URL and loads the map into GizmoSDK native db
-        public bool LoadMap(string mapURL)
-        {
-            NodeLock.WaitLockEdit();      // We assume we do all editing from main thread and to allow render we assume we edit in edit mode
-
-            try // We are now locked in edit
-            {
-
-                if (!ResetMap())
-                    return false;
-
-                Node node = null;
-
-                while (true)
-                {
-                    if (string.IsNullOrEmpty(mapURL))
-                        break;
-
-                    string errorString = "";
-                    SerializeAdapter.AdapterError errorType = SerializeAdapter.AdapterError.NO_ERROR;
-                    bool retry = false;
-                    node = DbManager.LoadDB(mapURL, ref errorString, ref errorType);
-
-                    if (node == null || !node.IsValid())
-                    {
-                        Message.Send(ID, MessageLevel.WARNING, $"Failed to load map {mapURL}");
-
-                        OnMapLoadError?.Invoke(ref mapURL, errorString, errorType, ref retry);
-
-
-                        if (retry)
-                        {
-                            continue;
-                        }
-
-                        return false;
-                    }
-
-                    break;
-                }
-
-                MapUrl = mapURL;
-
-                MapControl.SystemMap.NodeURL = mapURL;
-                MapControl.SystemMap.CurrentMap = node;
-
-                
-
-                if (node != null)
-                {
-                    _native_scene.AddNode(MapControl.SystemMap.CurrentMap);
-#if DEBUG
-                    _native_scene.Debug();
-#endif
-
-                    _root = new GameObject("root");
-                    GameObject scene = _sceneTraverser.Begin(MapControl.SystemMap.CurrentMap);
-
-                    if (scene != null)
-                        scene.transform.SetParent(_root.transform, false);
-
-                    // As GizmoSDK has a flipped Z axis going out of the screen we need a top transform to flip Z
-                    _root.transform.localScale = new Vector3(1, 1, -1);
-                }
-                
-                
-
-                //// Add example object under ROI --------------------------------------------------------------
-
-                //MapPos mapPos;
-
-                //GetMapPosition(new LatPos(1.0084718541, 0.24984267815, 300), out mapPos, GroundClampType.GROUND, true);
-
-                //_test = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-
-                //_test.transform.parent = FindFirstGameObjectTransform(mapPos.roiNode);
-                //_test.transform.localPosition = mapPos.position.ToVector3();
-                //_test.transform.localScale = new Vector3(10, 10, 10);
-
-                if (SceneManagerCamera != null)
-                    SceneManagerCamera.MapChanged();
-
-                OnMapChanged?.Invoke(node);
-            }
-            finally
-            {
-                NodeLock.UnLock();
-            }
-
-            return true;
-        }
-
-        public bool ResetMap()
-        {
-            //MapUrl = null;
-
-            NodeLock.WaitLockEdit();
-
-            try // We are now locked in edit
-            {
-
-                _dynamicNodeLoadCoordinator?.Reset();
-
-                // allow builders to perform custom clean up
-                _builderRegistry.Reset();
-                _geometryOperations?.Reset();
-
-                if (_root)
-                {
-                    _hierarchyUnloader.Unload(_root.transform);
-                    _nodeHandlePool.QueueFree(_root.transform);
-                    _nodeHandlePool.ProcessPending(int.MaxValue);
-                    _root = null;
-                }
-
-                _native_scene?.RemoveAllNodes();
-
-                _textureManager.Clear();
-                _materialManager.Clear();
-
-                // clear all pending asset loads
-                _sceneTraverser.AssetPolicy.ClearDeferred();
-
-                // clear any pending builds
-                _buildCoordinator.Clear();
-                _nodeUpdateRegistry.Clear();
-                _externalAssetLoader.Clear();
-
-                MapControl.SystemMap.Reset();
-            }
-            finally
-            {
-                NodeLock.UnLock();
-            }
-
-            return true;
-        }
+        private void HandleMapChanged(Node node) =>
+            SceneManagerCamera?.MapChanged();
 
         private void AddDefaultBuilders()
         {
@@ -441,45 +280,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
 
             _traversalConfiguration.Update(Settings);
-            _dynamicNodeLoadCoordinator.Subscribe();
-            _sceneTraverser.SetActionReceiver(_dynamicNodeLoadCoordinator.ActionReceiver);
-
-            
-            NodeLock.WaitLockEdit();
-
-            try // We are now locked in edit
-            {
-                // Camera setup
-                _native_camera = new PerspCamera("Test");
-                _native_camera.RoiPosition = true;
-                MapControl.SystemMap.Camera = _native_camera;
-
-                // Top scene
-                _native_scene = new Scene("Scene");
-                _native_camera.Scene = _native_scene;
-
-                // Top context
-                _native_context = new Context();
-
-#if DEBUG_CAMERA
-
-                // If we want to visualize debug 3D
-                _native_camera.Debug(_native_context);      // Enable to debug view
-
-#endif // DEBUG_CAMERA
-
-                // Default travrser
-                _native_traverse_action = new CullTraverseAction();
-
-                // _native_traverse_action.SetOmniTraverser(true);  // To skip camera cull and use LOD in omni directions
-
-
-            }
-            finally
-            {
-
-                NodeLock.UnLock();
-            }
+            _mapSession.Initialize();
 
             // Set up dynamic loading
             DynamicLoader.UsePreCache(true);                    // Enable use of mipmap creation on dynamic loading
@@ -500,31 +301,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             // Stop manager
             DynamicLoaderManager.StopManager();
 
-            ResetMap();
-
-            NodeLock.WaitLockEdit();
-
-            try // We are now locked in edit
-            {
-
-                _native_camera.Debug(_native_context, false);
-                _native_camera.Dispose();
-                _native_camera = null;
-
-                _native_context.Dispose();
-                _native_context = null;
-
-                _native_scene.Dispose();
-                _native_scene = null;
-
-            }
-            finally
-            {
-                NodeLock.UnLock();
-            }
-
-            _dynamicNodeLoadCoordinator.Unsubscribe();
-            _sceneTraverser.SetActionReceiver(null);
+            _mapSession.Dispose();
 
             // Dont do this as Unity wants to keep modules loaded
             //// Drop platform streamer
@@ -547,7 +324,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return false;
 
             // Load the map
-            if (loadMap && !LoadMap(MapUrl))
+            if (loadMap && !_mapSession.Load())
                 return false;
 
             return true;
@@ -598,9 +375,9 @@ namespace Saab.Foundation.Unity.MapStreamer
                 var frame = new StreamingFrameContext(
                     SceneManagerCamera,
                     SceneManagerCamera.Camera,
-                    _native_camera,
-                    _native_context,
-                    _native_traverse_action,
+                    _mapSession.NativeCamera,
+                    _mapSession.NativeContext,
+                    _mapSession.TraverseAction,
                     Settings,
                     NotifyPreTraverse,
                     NotifyCameraUpdated);

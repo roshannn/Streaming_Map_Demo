@@ -87,6 +87,13 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
+        // Global movement is mirrored onto the Unity transform so it remains
+        // observable to Unity systems and in the scene hierarchy. GizmoSDK
+        // receives that movement separately through GlobalPosition, so its
+        // local camera matrix must contain orientation only.
+        public Matrix4x4 NativeWorldToLocalMatrix =>
+            Matrix4x4.Rotate(Quaternion.Inverse(transform.rotation));
+
         public float GetDeltaTime()
         {
             if (_lastRenderTime == 0)
@@ -104,7 +111,16 @@ namespace Saab.Foundation.Unity.MapStreamer
                 X = value.x;
                 Y = value.y;
                 Z = value.z;
+                SynchronizeUnityTransform();
             }
+        }
+
+        private void SynchronizeUnityTransform()
+        {
+            transform.position = new Vector3(
+                (float)X,
+                (float)Y,
+                -(float)Z);
         }
 
         private float _countDownJump = 4;
@@ -312,7 +328,10 @@ namespace Saab.Foundation.Unity.MapStreamer
             Move(_autoMovement);
 
             if (_inputLocked)
+            {
+                SynchronizeUnityTransform();
                 return renderTime;
+            }
 
             var speed = Speed;
 
@@ -378,6 +397,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 #endif
 
             transform.rotation = rot;
+            SynchronizeUnityTransform();
 
 
             return renderTime;
