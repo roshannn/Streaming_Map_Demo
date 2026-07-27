@@ -1,6 +1,6 @@
 // Copyright 2021 saab AB
 
-using GizmoSDK.Gizmo3D;
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal
@@ -22,8 +22,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
         public UnityEngine.Transform Transform => _handle.transform;
         public PoolObjectFeature Feature => _handle.featureKey;
         public bool IsValid => _handle != null;
-        internal byte Version => _handle.version;
-        internal bool HasNativeNode => _handle.node != null;
+        internal NodeBuildTarget BuildTarget =>
+            new NodeBuildTarget(_handle);
 
         public void MarkAsAssetInstance()
         {
@@ -41,25 +41,5 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             _handle.inNodeUpdateList = true;
         }
 
-        internal bool Build(
-            INodeBuilder builder,
-            TraversalNode activeState)
-        {
-            var activeHandle =
-                activeState.IsValid ? activeState._handle : null;
-
-            if (!builder.Build(_handle, activeHandle))
-                return false;
-
-            _handle.builder = builder;
-            return true;
-        }
-
-        internal void RegisterAssetPrefab(
-            Geometry geometry,
-            AssetInstanceBuilder assetInstances)
-        {
-            assetInstances.AddAssetPrefab(geometry, _handle);
-        }
     }
 }

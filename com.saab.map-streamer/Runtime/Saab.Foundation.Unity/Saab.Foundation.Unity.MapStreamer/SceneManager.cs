@@ -179,7 +179,8 @@ namespace Saab.Foundation.Unity.MapStreamer
         private INodeUpdateRegistry _nodeUpdateRegistry;
         private IExternalAssetQueue _externalAssetLoader;
         private GeometryBuilderRegistry _builderRegistry;
-        private NodeBuildScheduler _buildScheduler;
+        private PooledNodeObjectPolicyRegistry _poolPolicyRegistry;
+        private NodeBuildCoordinator _buildCoordinator;
         private IGeometryNodeOperations _geometryOperations;
 
         // Used by builders to share and manage texture resources
@@ -199,7 +200,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             INodeUpdateRegistry nodeUpdateRegistry,
             IExternalAssetQueue externalAssetLoader,
             GeometryBuilderRegistry builderRegistry,
-            NodeBuildScheduler buildScheduler,
+            PooledNodeObjectPolicyRegistry poolPolicyRegistry,
+            NodeBuildCoordinator buildCoordinator,
             IGeometryNodeOperations geometryOperations,
             TextureManager textureManager,
             MaterialManager materialManager,
@@ -212,7 +214,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             _nodeUpdateRegistry = nodeUpdateRegistry;
             _externalAssetLoader = externalAssetLoader;
             _builderRegistry = builderRegistry;
-            _buildScheduler = buildScheduler;
+            _poolPolicyRegistry = poolPolicyRegistry;
+            _buildCoordinator = buildCoordinator;
             _geometryOperations = geometryOperations;
             _textureManager = textureManager;
             _materialManager = materialManager;
@@ -228,12 +231,28 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (_initialized)
                 throw new InvalidOperationException("builders must be registered before init");
             
-            _builderRegistry.Add(builder);
+            RegisterBuilder(builder);
         }
 
         public void RemoveBuilder(INodeBuilder builder)
         {
             _builderRegistry.Remove(builder);
+            if (builder is IPooledNodeObjectPolicy policy)
+                _poolPolicyRegistry.Remove(policy);
+        }
+
+        private void RegisterBuilder(INodeBuilder builder)
+        {
+            if (!(builder is IPooledNodeObjectPolicy policy))
+            {
+                throw new ArgumentException(
+                    $"{builder.GetType().Name} must provide a pooled-object " +
+                    $"policy for feature {builder.Feature}",
+                    nameof(builder));
+            }
+
+            _builderRegistry.Add(builder);
+            _poolPolicyRegistry.Add(policy);
         }
 
         // The LoadMap function takes an URL and loads the map into GizmoSDK native db
@@ -360,7 +379,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _sceneTraverser.AssetPolicy.ClearDeferred();
 
                 // clear any pending builds
-                _buildScheduler.Clear();
+                _buildCoordinator.Clear();
                 _nodeUpdateRegistry.Clear();
                 _externalAssetLoader.Clear();
 
@@ -378,7 +397,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             // initialize node builders
             foreach (var builder in Builders)
-                _builderRegistry.Add(builder);
+                RegisterBuilder(builder);
 
             if (_builderRegistry.Count == 0)
                 Message.Send("SceneManager", MessageLevel.WARNING, "no node builder registered");
@@ -410,7 +429,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 builder.SetMaterialManager(_materialManager);
             }
 
-            _nodeHandlePool.Initialize(_builderRegistry);
+            _nodeHandlePool.Initialize(_poolPolicyRegistry);
 
             if (!_nodeHandlePool.HasPool(PoolObjectFeature.StaticMesh))
             {
@@ -592,7 +611,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (remainingBuildTime < TimeSpan.FromSeconds(Settings.MinBuildTime))
                 remainingBuildTime = TimeSpan.FromSeconds(Settings.MinBuildTime);
 
-            _buildScheduler.Process(remainingBuildTime);
+            _buildCoordinator.Process(remainingBuildTime);
 
             #endregion
         }

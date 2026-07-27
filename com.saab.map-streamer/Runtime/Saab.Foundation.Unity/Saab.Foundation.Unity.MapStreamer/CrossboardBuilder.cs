@@ -42,13 +42,16 @@ using UnityEngine;
 
 // GizmoSDK
 using GizmoSDK.Gizmo3D;
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 
 // Internal
 //using Assets.Crossboard;
 
 namespace Saab.Foundation.Unity.MapStreamer
 { 
-    public class CrossboardNodeBuilder : INodeBuilder
+    public class CrossboardNodeBuilder :
+        INodeBuilder,
+        IPooledNodeObjectPolicy
     {
         public BuildPriority Priority { get; private set; }
 
@@ -183,7 +186,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             return true;
         }
 
-        public void BuiltObjectReturnedToPool(GameObject gameObject, bool sharedAsset)
+        public void BuiltObjectReturnedToPool(
+            GameObject gameObject,
+            bool sharedAsset)
         {
             //var crossboardRenderer = gameObject.GetComponent<CrossboardRenderer_ComputeShader>();
             //if (!crossboardRenderer)
@@ -197,6 +202,14 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
 
         }
+
+        void IPooledNodeObjectPolicy.Reset(
+            GameObject gameObject,
+            bool sharedAsset) =>
+            BuiltObjectReturnedToPool(gameObject, sharedAsset);
+
+        void IPooledNodeObjectPolicy.Initialize(GameObject gameObject) =>
+            InitPoolObject(gameObject);
 
         public void SetTextureManager(TextureManager textureManager)
         {

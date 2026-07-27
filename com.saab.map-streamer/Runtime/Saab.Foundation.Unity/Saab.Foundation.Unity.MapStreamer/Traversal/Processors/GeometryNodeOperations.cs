@@ -8,7 +8,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
     internal sealed class GeometryNodeOperations : IGeometryNodeOperations
     {
         private readonly GeometryBuilderRegistry _builders;
-        private readonly NodeBuildScheduler _scheduler;
+        private readonly NodeBuildCoordinator _builds;
         private readonly ITraversalNodeFactory _nodes;
         private readonly NodeEvents _nodeEvents;
         private readonly AssetInstanceBuilder _assetInstances =
@@ -16,12 +16,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 
         public GeometryNodeOperations(
             GeometryBuilderRegistry builders,
-            NodeBuildScheduler scheduler,
+            NodeBuildCoordinator builds,
             ITraversalNodeFactory nodes,
             NodeEvents nodeEvents)
         {
             _builders = builders;
-            _scheduler = scheduler;
+            _builds = builds;
             _nodes = nodes;
             _nodeEvents = nodeEvents;
         }
@@ -40,7 +40,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
                 state.Node =
                     _nodes.Create(geometry, PoolObjectFeature.StaticMesh);
                 state.Node.MarkAsAssetInstance();
-                _scheduler.Build(_assetInstances, in state);
+                _builds.Build(_assetInstances, in state);
             }
             else
             {
@@ -54,13 +54,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
                     if (geometry.HasState())
                         state.ActiveStateNode = state.Node;
 
-                    _scheduler.Build(builder, in state);
+                    _builds.Build(builder, in state);
                 }
 
                 if (state.TraversalStateFlags.HasFlag(TraversalState.Asset))
-                    state.Node.RegisterAssetPrefab(
+                    _builds.RegisterAssetPrefab(
+                        _assetInstances,
                         geometry,
-                        _assetInstances);
+                        state.Node);
             }
 
             var isAsset =

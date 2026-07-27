@@ -70,20 +70,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         bool Build(NodeHandle nodeHandle, NodeHandle activeStateNode);
 
         /// <summary>
-        /// Invoked when an object built by this builder is recycled
-        /// </summary>
-        /// <param name="gameObject">object that was recycled</param>
-        /// <param name="sharedAsset">true if the object was was sharing resources</param>
-        void BuiltObjectReturnedToPool(GameObject gameObject, bool sharedAsset);
-
-        /// <summary>
-        /// Invoked when allocating new objects for this builder instance, allowing the builder
-        /// to add all required components
-        /// </summary>
-        /// <param name="gameObject">GameObject to decorate</param>
-        void InitPoolObject(GameObject gameObject);
-
-        /// <summary>
         /// Assigns the texture manager instance that the builder should use when working with textures
         /// </summary>
         /// <param name="textureManager">Assigned TextureManager instance</param>

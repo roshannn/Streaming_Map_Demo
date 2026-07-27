@@ -1,5 +1,7 @@
 // Copyright 2021 saab AB
 
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
     internal readonly struct PendingNodeBuild
@@ -10,14 +12,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             TraversalNode activeStateNode)
         {
             Builder = builder;
-            Node = node;
-            ActiveStateNode = activeStateNode;
-            Version = node.Version;
+            Target = node.BuildTarget;
+            ActiveStateTarget = activeStateNode.IsValid
+                ? activeStateNode.BuildTarget
+                : default;
+            Version = Target.Version;
         }
 
         public INodeBuilder Builder { get; }
-        public TraversalNode Node { get; }
-        public TraversalNode ActiveStateNode { get; }
+        public NodeBuildTarget Target { get; }
+        public NodeBuildTarget ActiveStateTarget { get; }
         public byte Version { get; }
     }
 }

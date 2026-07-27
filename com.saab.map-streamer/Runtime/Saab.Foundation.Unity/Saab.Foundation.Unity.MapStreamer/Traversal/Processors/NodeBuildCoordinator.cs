@@ -2,10 +2,12 @@
 
 using System;
 using System.Collections.Generic;
+using GizmoSDK.Gizmo3D;
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
 {
-    internal sealed class NodeBuildScheduler
+    internal sealed class NodeBuildCoordinator
     {
         private readonly Queue<PendingNodeBuild> _pending =
             new Queue<PendingNodeBuild>(1000);
@@ -15,9 +17,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             switch (builder.Priority)
             {
                 case BuildPriority.Immediate:
-                    context.Node.Build(
-                        builder,
-                        context.ActiveStateNode);
+                    var target = context.Node.BuildTarget;
+                    var activeTarget =
+                        context.ActiveStateNode.IsValid
+                            ? context.ActiveStateNode.BuildTarget
+                            : default;
+                    target.Build(builder, activeTarget);
                     break;
                 case BuildPriority.Low:
                     _pending.Enqueue(new PendingNodeBuild(
@@ -37,18 +42,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
             while (_pending.Count > 0 && timer.Elapsed < maxBuildTime)
             {
                 var build = _pending.Dequeue();
-                var node = build.Node;
+                var target = build.Target;
 
-                if (build.Version != node.Version)
+                if (build.Version != target.Version)
                     continue;
 
-                var activeStateNode = build.ActiveStateNode;
-                if (activeStateNode.IsValid &&
-                    !activeStateNode.HasNativeNode)
+                var activeTarget = build.ActiveStateTarget;
+                if (activeTarget.IsValid &&
+                    !activeTarget.HasNativeNode)
                     continue;
 
-                node.Build(build.Builder, activeStateNode);
+                target.Build(build.Builder, activeTarget);
             }
+        }
+
+        public void RegisterAssetPrefab(
+            AssetInstanceBuilder assetInstances,
+            Geometry geometry,
+            TraversalNode node)
+        {
+            node.BuildTarget.RegisterAssetPrefab(
+                geometry,
+                assetInstances);
         }
 
         public void Clear() => _pending.Clear();

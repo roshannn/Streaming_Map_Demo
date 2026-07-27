@@ -11,7 +11,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Processors
         private readonly List<INodeBuilder> _builders = new List<INodeBuilder>();
 
         public int Count => _builders.Count;
-
         public void Add(INodeBuilder builder) => _builders.Add(builder);
         public void Remove(INodeBuilder builder) => _builders.Remove(builder);
 

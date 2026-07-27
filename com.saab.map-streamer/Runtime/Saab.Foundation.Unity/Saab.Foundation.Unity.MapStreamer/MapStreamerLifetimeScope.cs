@@ -34,7 +34,8 @@ namespace Saab.Foundation.Unity.MapStreamer
                 .As<IGeometryNodeOperations>();
 
             builder.Register<GeometryBuilderRegistry>(Lifetime.Scoped);
-            builder.Register<NodeBuildScheduler>(Lifetime.Scoped);
+            builder.Register<PooledNodeObjectPolicyRegistry>(Lifetime.Scoped);
+            builder.Register<NodeBuildCoordinator>(Lifetime.Scoped);
             builder.Register<TextureManager>(Lifetime.Scoped);
             builder.Register<MaterialManager>(Lifetime.Scoped);
             builder.Register<NodeHandlePool>(Lifetime.Scoped);

@@ -37,12 +37,13 @@ namespace Saab.Foundation.Unity.MapStreamer.NodeProcessing
         public bool HasPool(PoolObjectFeature feature) =>
             _prefabs[(byte)feature] != null;
 
-        public void Initialize(IEnumerable<INodeBuilder> builders)
+        public void Initialize(
+            IEnumerable<IPooledNodeObjectPolicy> policies)
         {
             EnsurePool(PoolObjectFeature.None, null);
 
-            foreach (var builder in builders)
-                EnsurePool(builder.Feature, builder);
+            foreach (var policy in policies)
+                EnsurePool(policy.Feature, policy);
 
             _preAllocationOrder.Clear();
             for (var i = 0; i < _free.Length; ++i)
@@ -130,19 +131,19 @@ namespace Saab.Foundation.Unity.MapStreamer.NodeProcessing
 
         private void EnsurePool(
             PoolObjectFeature feature,
-            INodeBuilder builder)
+            IPooledNodeObjectPolicy policy)
         {
             var index = (byte)feature;
             if (_free[index] != null)
                 return;
 
             _free[index] = new Stack<NodeHandle>(65000);
-            _prefabs[index] = CreatePrefab(feature, builder);
+            _prefabs[index] = CreatePrefab(feature, policy);
         }
 
         private static NodeHandle CreatePrefab(
             PoolObjectFeature feature,
-            INodeBuilder builder)
+            IPooledNodeObjectPolicy policy)
         {
             var prefab = new GameObject();
             prefab.SetActive(false);
@@ -151,7 +152,8 @@ namespace Saab.Foundation.Unity.MapStreamer.NodeProcessing
 #endif
             var handle = prefab.AddComponent<NodeHandle>();
             handle.featureKey = feature;
-            builder?.InitPoolObject(prefab);
+            handle.poolPolicy = policy;
+            policy?.Initialize(prefab);
             return handle;
         }
 
@@ -183,11 +185,11 @@ namespace Saab.Foundation.Unity.MapStreamer.NodeProcessing
             objectTransform.localRotation = Quaternion.identity;
             objectTransform.localScale = Vector3.one;
 
-            if (handle.builder != null)
+            if (handle.poolPolicy != null)
             {
                 var sharedNode =
                     handle.stateFlags.HasFlag(NodeStateFlags.AssetInstance);
-                handle.builder.BuiltObjectReturnedToPool(gameObject, sharedNode);
+                handle.poolPolicy.Reset(gameObject, sharedNode);
             }
 
             if (handle.node is Geometry)

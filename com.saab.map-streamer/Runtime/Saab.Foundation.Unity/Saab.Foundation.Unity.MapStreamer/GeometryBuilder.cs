@@ -42,10 +42,14 @@ using UnityEngine;
 using GizmoSDK.Gizmo3D;
 using Unity.Profiling;
 using System.Collections.Generic;
+using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
-    public abstract class NodeBuilderBase : MonoBehaviour, INodeBuilder
+    public abstract class NodeBuilderBase :
+        MonoBehaviour,
+        INodeBuilder,
+        IPooledNodeObjectPolicy
     {
         [SerializeField]
         private BuildPriority _mode = BuildPriority.Immediate;
@@ -59,7 +63,17 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public abstract bool Build(NodeHandle nodeHandle, NodeHandle activeStateNode);
 
-        public abstract void BuiltObjectReturnedToPool(GameObject gameObject, bool sharedAsset);
+        void IPooledNodeObjectPolicy.Reset(
+            GameObject gameObject,
+            bool sharedAsset) =>
+            BuiltObjectReturnedToPool(gameObject, sharedAsset);
+
+        void IPooledNodeObjectPolicy.Initialize(GameObject gameObject) =>
+            InitPoolObject(gameObject);
+
+        public abstract void BuiltObjectReturnedToPool(
+            GameObject gameObject,
+            bool sharedAsset);
         public abstract void InitPoolObject(GameObject gameObject);
 
         public abstract bool CanBuild(Node node, TraversalState traversalState, IntersectMaskValue intersectMask);
@@ -180,7 +194,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             return true;
         }
 
-        public override void BuiltObjectReturnedToPool(GameObject gameObject, bool sharedAsset)
+        public override void BuiltObjectReturnedToPool(
+            GameObject gameObject,
+            bool sharedAsset)
         {
             if (sharedAsset)
             {
