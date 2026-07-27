@@ -3,6 +3,8 @@ using System;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
+using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
@@ -53,6 +55,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<NodeHierarchyUnloader>(Lifetime.Scoped);
             builder.Register<SceneTraverser>(Lifetime.Scoped);
             builder.Register<DynamicNodeLoadCoordinator>(Lifetime.Scoped);
+            builder.Register<StreamingLock>(Lifetime.Scoped)
+                .As<IStreamingLock>();
+            builder.Register<StreamingPipeline>(Lifetime.Scoped);
         }
     }
 }

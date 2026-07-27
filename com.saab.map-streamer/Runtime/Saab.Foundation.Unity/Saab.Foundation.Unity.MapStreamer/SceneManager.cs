@@ -54,10 +54,10 @@ using gzTexture = GizmoSDK.Gizmo3D.Texture;
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
-using Saab.Unity.Extensions;
 using Saab.Utility.GfxCaps;
 
 // System
@@ -172,8 +172,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
 
         private static readonly ProfilerMarker _profilerMarkerRender = new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
-        private static readonly ProfilerMarker _profilerMarkerCull = new ProfilerMarker(ProfilerCategory.Render, "SM-Cull");
-        private static readonly ProfilerMarker _profilerMarkerTraverse = new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
         private bool _initialized;
 
         private INodeUpdateRegistry _nodeUpdateRegistry;
@@ -194,6 +192,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         private NodeHandlePool _nodeHandlePool;
         private NodeHierarchyUnloader _hierarchyUnloader;
         private ITraversalConfiguration _traversalConfiguration;
+        private StreamingPipeline _streamingPipeline;
 
         [Inject]
         private void Construct(
@@ -210,6 +209,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             NodeHandlePool nodeHandlePool,
             NodeHierarchyUnloader hierarchyUnloader,
             ITraversalConfiguration traversalConfiguration,
+            StreamingPipeline streamingPipeline,
             MapConfig mapConfig)
         {
             _nodeUpdateRegistry = nodeUpdateRegistry;
@@ -225,6 +225,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             _nodeHandlePool = nodeHandlePool;
             _hierarchyUnloader = hierarchyUnloader;
             _traversalConfiguration = traversalConfiguration;
+            _streamingPipeline = streamingPipeline;
             MapUrl = mapConfig.MapUrl;
         }
 
@@ -579,51 +580,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             Uninitialize();
         }
                
-        private void ProcessPendingUpdatesPreTraversal()
-        {
-            // We must be called in edit lock
-            _traversalConfiguration.Update(Settings);
-
-            // Process changes of the scenegraph
-            _profilerMarkerTraverse.Begin();
-            _dynamicNodeLoadCoordinator.ProcessLoads();
-            _profilerMarkerTraverse.End();
-        }
-
-        private void ProcessPendingUpdatesPostTraversal()
-        {
-            // We must be called in edit lock
-
-            #region Activate/Deactivate GameObjects based on scenegraph -----------------------------------------------------
-
-            _dynamicNodeLoadCoordinator.ProcessActivations();
-
-            #endregion
-
-            #region Update slow loading assets ------------------------------------------------------------------------------
-
-            // free up to a maximum number of nodes
-            _nodeHandlePool.ProcessPending(1000);
-
-            // make sure we have available nodes in our pools
-            _nodeHandlePool.PreAllocate(10000, TimeSpan.FromMilliseconds(1));
-
-
-            var remainingBuildTime = TimeSpan.FromSeconds(Settings.MaxBuildTime) - _renderTimer.Elapsed;
-            if (remainingBuildTime < TimeSpan.FromSeconds(Settings.MinBuildTime))
-                remainingBuildTime = TimeSpan.FromSeconds(Settings.MinBuildTime);
-
-            _buildCoordinator.Process(remainingBuildTime);
-
-            #endregion
-        }
-
-        private void UpdateNodeInternals()
-        {
-            // Only called if SceneManagerCamera is not null
-            _nodeUpdateRegistry.UpdateNodes();
-        }
-
         // Update is called once per frame
         private void Update()
         {
@@ -631,143 +587,36 @@ namespace Saab.Foundation.Unity.MapStreamer
                 Render();
         }
 
-        private readonly System.Diagnostics.Stopwatch _renderTimer = new System.Diagnostics.Stopwatch();
-
         public void Render()
         {
-            _renderTimer.Restart();
-
             // Check if global world camera is present -----------------------
             if (SceneManagerCamera == null)
                 return;
 
-            _profilerMarkerRender.Begin();
-
-            RenderInternal();
-
-            _profilerMarkerRender.End();
+            using (_profilerMarkerRender.Auto())
+            {
+                var frame = new StreamingFrameContext(
+                    SceneManagerCamera,
+                    SceneManagerCamera.Camera,
+                    _native_camera,
+                    _native_context,
+                    _native_traverse_action,
+                    Settings,
+                    NotifyPreTraverse,
+                    NotifyCameraUpdated);
+                _streamingPipeline.ProcessFrame(frame);
+            }
             
             // -------------------------------------------------------------
             SceneManagerCamera.PostTraverse(false);
             OnPostTraverse?.Invoke(false);
         }
 
-        private void RenderInternal()
-        {
-            // Check if local unity camera is present ------------------------
-            var unityCamera = SceneManagerCamera.Camera;
-            if (unityCamera == null)
-                return;
+        private void NotifyPreTraverse(bool locked) =>
+            OnPreTraverse?.Invoke(locked);
 
-            // Check if local native camera is present ------------------------
-            if (_native_camera == null)
-                return;
-
-            // Lets try to build a scenegraph from pending changes from previous pass
-            if (!NodeLock.TryLockEdit(30))      // 30 msek allow latency of other pending editor
-            {
-                Message.Send(ID, MessageLevel.DEBUG, "Lock contention detected! NodeLock::TryLockEdit() FRAME LOST");
-
-                // We failed to refresh scene in reasonable time but we still need to issue updates;
-                SceneManagerCamera.PreTraverse(false);
-                OnPreTraverse?.Invoke(false);
-                return;
-            }
-
-            // Signal the world camera we are in pre traverse locked
-            SceneManagerCamera.PreTraverse(true);
-
-            // Signal the SM we are in pre traverse locked
-            OnPreTraverse?.Invoke(true);
-
-            // Builds a scenegraph from changes from previous frame
-            ProcessPendingUpdatesPreTraversal();
-
-            if (!NodeLock.ChangeToRenderLock())
-            {
-                NodeLock.UnLock();
-                Message.Send(ID, MessageLevel.DEBUG, "Failed to change into RenderLock");
-            }
-
-            if (!NodeLock.IsLockedRender())
-                return;
-
-
-            if (_dynamicNodeLoadCoordinator.HasPendingLoads) // Check if we got a mismatch in updates
-            {
-                NodeLock.UnLock(); // Unlock render
-                Message.Send(ID, MessageLevel.FATAL, "Mismatch in virtual context (loaded/unloaded data)");
-                return;
-            }
-
-            // We are now locked in Render
-            _profilerMarkerCull.Begin();
-            RenderInternal(unityCamera);
-            _profilerMarkerCull.End();
-
-            if (!NodeLock.ChangeToEditLock())
-            {
-                NodeLock.UnLock();
-                Message.Send(ID, MessageLevel.DEBUG, "Failed to change into EditLock");
-            }
-
-            if (!NodeLock.IsLockedByMe())
-                return;
-
-            // Builds a scenegraph from changes from previous frame
-            ProcessPendingUpdatesPostTraversal();
-
-            NodeLock.UnLock();
-
-            // Unlocked updates
-            UpdateNodeInternals();
-        }
-
-        private void RenderInternal(UnityEngine.Camera UnityCamera)
-        {
-            // We are now locked in Render
-
-            // Setup LOD
-
-            // lod bias
-            var lodFactor = SceneManagerCamera.LodFactor;
-            Lod.SetLODFactor(_native_context, lodFactor);
-            MapControl.SystemMap.LodFactor = lodFactor;
-
-            // Transfer camera parameters
-
-            PerspCamera perspCamera = _native_camera as PerspCamera;
-
-            // Right now we use system time as render time but this can be controlled externally in the future
-            var renderTime = GizmoSDK.GizmoBase.Time.SystemSeconds;
-
-            // Syncronized update. You should use the rendertime
-            renderTime = SceneManagerCamera.UpdateCamera(renderTime);
+        private void NotifyCameraUpdated(double renderTime) =>
             OnUpdateCamera?.Invoke(renderTime);
-
-            // Use this time in render
-            _native_context.CurrentRenderTime = renderTime;
-
-            if (perspCamera != null)
-            {
-                perspCamera.VerticalFOV = UnityCamera.fieldOfView;
-                perspCamera.HorizontalFOV = 2 * Mathf.Atan(Mathf.Tan(UnityCamera.fieldOfView * Mathf.Deg2Rad / 2) * UnityCamera.aspect) * Mathf.Rad2Deg; ;
-                perspCamera.NearClipPlane = UnityCamera.nearClipPlane;
-                perspCamera.FarClipPlane = UnityCamera.farClipPlane;
-            }
-
-            Matrix4x4 unity_camera_transform = UnityCamera.transform.worldToLocalMatrix;
-
-            _native_camera.Transform = unity_camera_transform.ToZFlippedMatrix4();
-
-            _native_camera.Position = SceneManagerCamera.GlobalPosition;
-
-            _native_camera.Render(_native_context, 1000, 1000, 1000, _native_traverse_action);
-
-#if DEBUG_CAMERA
-                     _native_camera.DebugRefresh();
-#endif
-        }
 
     }
 }
