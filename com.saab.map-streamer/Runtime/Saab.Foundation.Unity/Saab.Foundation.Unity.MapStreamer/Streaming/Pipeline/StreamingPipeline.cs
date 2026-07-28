@@ -7,13 +7,10 @@ using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
-using Saab.Unity.Extensions;
-
-using UnityEngine;
-
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 
@@ -36,9 +33,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
         private readonly NodeHandlePool _nodeHandlePool;
         private readonly NodeBuildCoordinator _buildCoordinator;
         private readonly INodeUpdateRegistry _nodeUpdates;
+        private readonly NativeCameraController _cameraController;
         private readonly Stopwatch _frameTimer = new Stopwatch();
 
         private bool _ownsLock;
+        private bool _hasLoggedFirstFrame;
 
         public StreamingPipeline(
             IStreamingLock streamingLock,
@@ -46,7 +45,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
             NodeBuildCoordinator buildCoordinator,
-            INodeUpdateRegistry nodeUpdates)
+            INodeUpdateRegistry nodeUpdates,
+            NativeCameraController cameraController)
         {
             _streamingLock = streamingLock;
             _traversalConfiguration = traversalConfiguration;
@@ -54,6 +54,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             _nodeHandlePool = nodeHandlePool;
             _buildCoordinator = buildCoordinator;
             _nodeUpdates = nodeUpdates;
+            _cameraController = cameraController;
+            global::UnityEngine.Debug.Log(
+                "StreamingPipeline: constructed with NativeCameraController.");
         }
 
         internal StreamingPipelineState State { get; private set; } =
@@ -61,7 +64,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
         public void ProcessFrame(in StreamingFrameContext context)
         {
-            if (context.UnityCamera == null || context.NativeCamera == null)
+            if (!_hasLoggedFirstFrame)
+            {
+                _hasLoggedFirstFrame = true;
+                global::UnityEngine.Debug.Log(
+                    $"StreamingPipeline.ProcessFrame: first frame; " +
+                    $"camera ready = {_cameraController.IsReady}, " +
+                    $"native context assigned = {context.NativeContext != null}.");
+            }
+
+            if (!_cameraController.IsReady || context.NativeContext == null)
                 return;
 
             // A callback may attempt to render recursively. Reject it without
@@ -137,14 +149,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                     MessageLevel.DEBUG,
                     "Lock contention detected! NodeLock::TryLockEdit() FRAME LOST " +
                     $"[state={State}]");
-                context.SceneCamera.PreTraverse(false);
                 context.NotifyPreTraverse?.Invoke(false);
                 return false;
             }
 
             _ownsLock = true;
             State = StreamingPipelineState.Editing;
-            context.SceneCamera.PreTraverse(true);
             context.NotifyPreTraverse?.Invoke(true);
             return true;
         }
@@ -191,37 +201,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
             using (ProfilerMarkerCull.Auto())
             {
-                var lodFactor = context.SceneCamera.LodFactor;
+                var lodFactor = _cameraController.StreamingCamera.LodFactor;
                 Lod.SetLODFactor(context.NativeContext, lodFactor);
                 MapControl.SystemMap.LodFactor = lodFactor;
 
-                var renderTime = GizmoSDK.GizmoBase.Time.SystemSeconds;
-                renderTime = context.SceneCamera.UpdateCamera(renderTime);
+                context.NativeContext.CurrentRenderTime =
+                    GizmoSDK.GizmoBase.Time.SystemSeconds;
+                var renderTime = context.NativeContext.CurrentRenderTime;
+                renderTime = _cameraController.Update(renderTime);
                 context.NotifyCameraUpdated?.Invoke(renderTime);
-                context.NativeContext.CurrentRenderTime = renderTime;
 
-                if (context.NativeCamera is PerspCamera perspectiveCamera)
-                {
-                    perspectiveCamera.VerticalFOV = context.UnityCamera.fieldOfView;
-                    perspectiveCamera.HorizontalFOV =
-                        2 * Mathf.Atan(
-                            Mathf.Tan(
-                                context.UnityCamera.fieldOfView *
-                                Mathf.Deg2Rad / 2) *
-                            context.UnityCamera.aspect) *
-                        Mathf.Rad2Deg;
-                    perspectiveCamera.NearClipPlane =
-                        context.UnityCamera.nearClipPlane;
-                    perspectiveCamera.FarClipPlane =
-                        context.UnityCamera.farClipPlane;
-                }
-
-                context.NativeCamera.Transform =
-                    context.UnityCamera.transform.worldToLocalMatrix
-                        .ToZFlippedMatrix4();
-                context.NativeCamera.Position =
-                    context.SceneCamera.GlobalPosition;
-                context.NativeCamera.Render(
+                _cameraController.NativeCamera.Render(
                     context.NativeContext,
                     1000,
                     1000,

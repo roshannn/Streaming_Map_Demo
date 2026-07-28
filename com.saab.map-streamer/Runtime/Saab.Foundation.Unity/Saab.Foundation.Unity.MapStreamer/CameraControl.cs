@@ -59,7 +59,8 @@ namespace Saab.Foundation.Unity.MapStreamer
         public float tilt;
     }
 
-    public class CameraControl : MonoBehaviour, ISceneManagerCamera
+    [RequireComponent(typeof(InputController))]
+    public class CameraControl : MonoBehaviour, IStreamingCamera, IInputReceiver
     {
 
         public float Speed = 20f;
@@ -78,8 +79,29 @@ namespace Saab.Foundation.Unity.MapStreamer
         private double _currentRenderTime = 0;
         private bool _inputLocked;
         private AutoMovement _autoMovement = default;
+        private readonly HashSet<ActionType> _inputActions = new HashSet<ActionType>();
+        private InputController _inputController;
+        private bool _hasLoggedStreamingUpdate;
 
-        public Camera Camera
+        private void Awake()
+        {
+            Debug.Log("CameraControl.Awake: initializing input and streaming camera.");
+            _inputController = GetComponent<InputController>();
+            _inputController.InputPerformed += ProcessInput;
+        }
+
+        private void OnDestroy()
+        {
+            if (_inputController != null)
+                _inputController.InputPerformed -= ProcessInput;
+        }
+
+        public void ProcessInput(ActionType action)
+        {
+            _inputActions.Add(action);
+        }
+
+        public Camera UnityCamera
         {
             get
             {
@@ -201,7 +223,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             UpdateShaderPos();
 
-            if (Input.GetButtonDown("Fire1") && Input.GetKey(KeyCode.LeftShift) && !_inputLocked)
+            if (_inputActions.Remove(ActionType.GroundPick) && !_inputLocked)
             {
                 Map.MapPos mapPos;
 
@@ -234,7 +256,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             }
 
-            if (Input.GetButtonDown("Fire2"))
+            if (_inputActions.Remove(ActionType.GroundQuery))
             {
                 GizmoSDK.Coordinate.LatPos latpos = new GizmoSDK.Coordinate.LatPos
                 {
@@ -252,25 +274,15 @@ namespace Saab.Foundation.Unity.MapStreamer
                 }
             }
 
-            if (Input.GetKey("b"))
+            if (_inputActions.Remove(ActionType.StopDynamicLoader))
             {
                 GizmoSDK.Gizmo3D.DynamicLoaderManager.StopManager();
             }
 
-            if (Input.GetKey("v"))
+            if (_inputActions.Remove(ActionType.StartDynamicLoader))
             {
                 GizmoSDK.Gizmo3D.DynamicLoaderManager.StartManager();
             }
-        }
-
-        public void PreTraverse(bool locked)
-        {
-            // Called before traverser runs
-        }
-
-        public void PostTraverse(bool locked)
-        {
-            // Called after all nodes have updated their transforms
         }
 
         public void RandomJump(float distance, float maxDistance = 3000)
@@ -294,7 +306,20 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
-        public double UpdateCamera(double renderTime)
+        double IStreamingCamera.Update(double renderTime)
+        {
+            if (!_hasLoggedStreamingUpdate)
+            {
+                _hasLoggedStreamingUpdate = true;
+                Debug.Log(
+                    $"CameraControl.IStreamingCamera.Update: first update at " +
+                    $"render time {renderTime}.");
+            }
+
+            return UpdateStreamingCamera(renderTime);
+        }
+
+        private double UpdateStreamingCamera(double renderTime)
         {
             _lastRenderTime = _currentRenderTime;
             _currentRenderTime = renderTime;
@@ -302,63 +327,66 @@ namespace Saab.Foundation.Unity.MapStreamer
             Move(_autoMovement);
 
             if (_inputLocked)
+            {
+                _inputActions.Clear();
                 return renderTime;
+            }
 
             var speed = Speed;
 
-            if (Input.GetKey(KeyCode.LeftShift))
+            if (_inputActions.Contains(ActionType.SpeedBoost))
                 speed *= ShiftMultiplier;
 
-            if (Input.GetKey("w"))
+            if (_inputActions.Contains(ActionType.MoveForward))
             {
                 MoveForward(speed);
             }
-            if (Input.GetKey("s"))
+            if (_inputActions.Contains(ActionType.MoveBackward))
             {
                 MoveForward(-speed);
             }
 
-            if (Input.GetKey(KeyCode.Space))
+            if (_inputActions.Contains(ActionType.MoveUp))
             {
                 MoveUp(speed / 2);
             }
-            if (Input.GetKey(KeyCode.C) || Input.GetKey(KeyCode.LeftControl))
+            if (_inputActions.Contains(ActionType.MoveDown))
             {
                 MoveUp(-speed / 2);
             }
 
-            if (Input.GetKey("d"))
+            if (_inputActions.Contains(ActionType.MoveRight))
             {
                 MoveRight(speed);
             }
-            if (Input.GetKey("a"))
+            if (_inputActions.Contains(ActionType.MoveLeft))
             {
                 MoveRight(-speed);
             }
 
             Quaternion rot = transform.rotation;
 
-            if (Input.GetKey(KeyCode.UpArrow))
+            if (_inputActions.Contains(ActionType.TiltUp))
             {
                 rot = rot * Tilt(RotSpeed);
             }
 
-            if (Input.GetKey(KeyCode.DownArrow))
+            if (_inputActions.Contains(ActionType.TiltDown))
             {
                 rot = rot * Tilt(-RotSpeed);
             }
 
-            if (Input.GetKey(KeyCode.LeftArrow))
+            if (_inputActions.Contains(ActionType.PanLeft))
             {
                 rot = Pan(-RotSpeed) * rot;
             }
 
-            if (Input.GetKey(KeyCode.RightArrow))
+            if (_inputActions.Contains(ActionType.PanRight))
             {
                 rot = Pan(RotSpeed) * rot;
             }
 
-            if (Input.GetKeyDown("p"))
+            if (_inputActions.Contains(ActionType.TurnAround))
             {
                 rot = Quaternion.Euler(0, 180, 0) * rot;
             }
@@ -368,15 +396,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 #endif
 
             transform.rotation = rot;
+            _inputActions.Clear();
 
 
             return renderTime;
         }
 
-        public void MapChanged()
-        {
-            // Called when global map has changed
-        }
     }
 }
 

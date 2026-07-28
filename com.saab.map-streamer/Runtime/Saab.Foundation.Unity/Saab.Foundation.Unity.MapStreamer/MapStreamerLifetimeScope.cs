@@ -23,6 +23,9 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         protected override void Configure(IContainerBuilder builder)
         {
+            UnityEngine.Debug.Log(
+                "MapStreamerLifetimeScope.Configure: registering streaming camera services.");
+
             if (mapConfig == null)
                 throw new InvalidOperationException(
                     "MapConfig must be assigned on MapStreamerLifetimeScope.");
@@ -33,7 +36,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.RegisterComponentInHierarchy<SceneManager>();
             builder.RegisterComponentInHierarchy<CameraControl>()
                 .AsSelf()
-                .As<ISceneManagerCamera>();
+                .As<IStreamingCamera>();
             builder.RegisterComponentInHierarchy<Initializer>();
             builder.RegisterComponentInHierarchy<MapShadingModule>();
             builder.RegisterComponentInHierarchy<FoliageModule>();
@@ -59,6 +62,10 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<SceneTraverser>(Lifetime.Scoped);
             builder.Register<DynamicNodeLoadCoordinator>(Lifetime.Scoped);
             builder.Register<NativeSceneResources>(Lifetime.Scoped);
+            builder.Register<NativeCameraController>(Lifetime.Scoped);
+            UnityEngine.Debug.Log(
+                "MapStreamerLifetimeScope.Configure: IStreamingCamera and " +
+                "NativeCameraController registered.");
             builder.Register<StreamingLock>(Lifetime.Scoped)
                 .As<IStreamingLock>();
             builder.Register<StreamingPipeline>(Lifetime.Scoped);

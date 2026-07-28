@@ -656,7 +656,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             else
                 UnsafeUtility.SetLeakDetectionMode(NativeLeakDetectionMode.Disabled);
 
-            var cam = _sceneManager.SceneManagerCamera.Camera;
+            var cam = _sceneManager.StreamingCamera.UnityCamera;
             GenerateFrustumPlane(cam);
 
             if (cam.depthTextureMode != DepthTextureMode.Depth)

@@ -67,25 +67,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 {
     // The SceneManager behaviour takes a unity camera and follows that to populate the current scene with GameObjects in a scenegraph hierarchy
 
-    public interface ISceneManagerCamera
-    {
-        UnityEngine.Camera Camera { get; }
-        Vec3D GlobalPosition { get; set; }           // Position in Global coordinate system
-
-        Vector3 Up { get; }                         // Get up vector in global coordinate system for current position
-        Vector3 North { get; }                      // Get north vector in global coordinate system for current position
-
-        void PreTraverse(bool locked);              // Executed before scene is traversed and updated with new transform and new geometry
-
-        void PostTraverse(bool locked);             // Executed after nodes are repositioned with new transforms and correct activations
-
-        double UpdateCamera(double renderTime);     // Executed just before camera transform is used. Update you cam animation in this
-
-        void MapChanged();                          // Executed when map is changed
-
-        float LodFactor { get; }                    // Current lod factor
-    }
-
     /// <summary>
     /// Options for configuring SceneManager runtime behaviour
     /// </summary>
@@ -132,7 +113,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     public class SceneManager : MonoBehaviour
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
-        public ISceneManagerCamera  SceneManagerCamera { get; private set; }
+        public IStreamingCamera StreamingCamera { get; private set; }
         public string               MapUrl { get; private set; }
         public NodeBuilderBase[] Builders;
 
@@ -144,11 +125,11 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public delegate void EventHandler_Traverse(bool locked);    // Pre and Post traversal in locked or unlocked mode (edit)
 
-        public event EventHandler_Traverse          OnPreTraverse;  // Called before SceneManagerCamera is updated
-        public event EventHandler_Traverse          OnPostTraverse; // Called after SceneManagerCamera is updated
+        public event EventHandler_Traverse          OnPreTraverse;  // Called before the streaming camera is updated
+        public event EventHandler_Traverse          OnPostTraverse; // Called after nodes and camera state are updated
         public event EventHandler_OnNode            OnMapChanged;
         public event EventHandler_OnMapLoadError    OnMapLoadError;
-        public event EventHandler_OnUpdateCamera    OnUpdateCamera; // Called after SceneManagerCamera is updated
+        public event EventHandler_OnUpdateCamera    OnUpdateCamera; // Called after the streaming camera is updated
 
         #region ------------- Privates ----------------
 
@@ -187,6 +168,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         private ITraversalConfiguration _traversalConfiguration;
         private StreamingPipeline _streamingPipeline;
         private NativeSceneResources _nativeScene;
+        private NativeCameraController _nativeCameraController;
 
         [Inject]
         private void Construct(
@@ -205,9 +187,14 @@ namespace Saab.Foundation.Unity.MapStreamer
             ITraversalConfiguration traversalConfiguration,
             StreamingPipeline streamingPipeline,
             NativeSceneResources nativeScene,
+            NativeCameraController nativeCameraController,
             MapConfig mapConfig,
-            ISceneManagerCamera sceneManagerCamera)
+            IStreamingCamera streamingCamera)
         {
+            Debug.Log(
+                "SceneManager.Construct: dependencies injected; assigning " +
+                "the streaming camera.");
+
             _nodeUpdateRegistry = nodeUpdateRegistry;
             _externalAssetLoader = externalAssetLoader;
             _builderRegistry = builderRegistry;
@@ -223,8 +210,26 @@ namespace Saab.Foundation.Unity.MapStreamer
             _traversalConfiguration = traversalConfiguration;
             _streamingPipeline = streamingPipeline;
             _nativeScene = nativeScene;
-            SceneManagerCamera = sceneManagerCamera;
+            _nativeCameraController = nativeCameraController;
+            SetStreamingCamera(streamingCamera);
             MapUrl = mapConfig.MapUrl;
+            Debug.Log("SceneManager.Construct: completed.");
+        }
+
+        public void SetStreamingCamera(IStreamingCamera streamingCamera)
+        {
+            Debug.Log(
+                $"SceneManager.SetStreamingCamera: called with " +
+                $"{streamingCamera?.GetType().Name ?? "<null>"}.");
+
+            if (streamingCamera == null)
+                throw new ArgumentNullException(nameof(streamingCamera));
+
+            _nativeCameraController.SetUnityCamera(streamingCamera);
+            StreamingCamera = streamingCamera;
+            Debug.Log(
+                $"SceneManager.SetStreamingCamera: assigned Unity camera " +
+                $"{streamingCamera.UnityCamera?.name ?? "<missing>"}.");
         }
 
         public void AddBuilder(INodeBuilder builder)
@@ -332,9 +337,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                 //_test.transform.localPosition = mapPos.position.ToVector3();
                 //_test.transform.localScale = new Vector3(10, 10, 10);
 
-                if (SceneManagerCamera != null)
-                    SceneManagerCamera.MapChanged();
-
                 OnMapChanged?.Invoke(node);
             }
             finally
@@ -409,6 +411,8 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public bool InitializeInternal()        
         {
+            Debug.Log("SceneManager.InitializeInternal: starting initialization.");
+
             // Initialize streamer APIs
             if (!GizmoSDK.Gizmo3D.Platform.Initialize())
                 return false;
@@ -445,6 +449,13 @@ namespace Saab.Foundation.Unity.MapStreamer
             try // We are now locked in edit
             {
                 _nativeScene.Initialize();
+                Debug.Log(
+                    "SceneManager.InitializeInternal: native scene initialized; " +
+                    "assigning native camera.");
+                _nativeCameraController.SetNativeCamera(_nativeScene.Camera);
+                Debug.Log(
+                    $"SceneManager.InitializeInternal: camera controller ready = " +
+                    $"{_nativeCameraController.IsReady}.");
 
                 // Default travrser
                 _native_traverse_action = new CullTraverseAction();
@@ -485,6 +496,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             try // We are now locked in edit
             {
 
+                _nativeCameraController.ClearNativeCamera();
                 _nativeScene.Dispose();
 
             }
@@ -560,15 +572,12 @@ namespace Saab.Foundation.Unity.MapStreamer
         public void Render()
         {
             // Check if global world camera is present -----------------------
-            if (SceneManagerCamera == null)
+            if (StreamingCamera == null)
                 return;
 
             using (_profilerMarkerRender.Auto())
             {
                 var frame = new StreamingFrameContext(
-                    SceneManagerCamera,
-                    SceneManagerCamera.Camera,
-                    _nativeScene.Camera,
                     _nativeScene.Context,
                     _native_traverse_action,
                     Settings,
@@ -578,7 +587,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
             
             // -------------------------------------------------------------
-            SceneManagerCamera.PostTraverse(false);
             OnPostTraverse?.Invoke(false);
         }
 
