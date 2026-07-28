@@ -72,7 +72,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         public double Y = 0;
         public double Z = 0;
 
-        public float LodFactor => 1f;
+        public float LodFactor => 2f;
 
         private double _lastRenderTime = 0;
         private double _currentRenderTime = 0;
