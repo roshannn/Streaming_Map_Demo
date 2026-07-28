@@ -36,10 +36,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             camera.Scene = scene;
             MapControl.SystemMap.Camera = camera;
 
-#if DEBUG_CAMERA
-            camera.Debug(context);
-#endif
-
             Camera = camera;
             _scene = scene;
             Context = context;
@@ -67,9 +63,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             if (!IsInitialized)
                 return;
 
-#if DEBUG_CAMERA
-            Camera.Debug(Context, false);
-#endif
+            MapControl.SystemMap.Camera = null;
 
             Camera.Dispose();
             Context.Dispose();

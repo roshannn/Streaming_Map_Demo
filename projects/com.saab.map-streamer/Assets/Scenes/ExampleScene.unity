@@ -156,15 +156,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4247e51c3496f4042a0b4726f65a39a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Settings:
-    MaxBuildTime: 0.016
-    MinBuildTime: 0.004
-    DynamicLoaders: 4
-    IntersectMask: -1
-    Options: 5
-  Builders:
-  - {fileID: 44396063}
-  - {fileID: 44396062}
 --- !u!114 &44396060
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -174,7 +165,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 44396058}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a284ca71ed695f84385934cf4c567931, type: 3}
+  m_Script: {fileID: 11500000, guid: c1f52269466c49a89b17cb24f0f87d55, type: 3}
   m_Name:
   m_EditorClassIdentifier:
 --- !u!114 &44396064
@@ -191,6 +182,10 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   autoRun: 1
   mapConfig: {fileID: 11400000, guid: 8b437e76f2c24c1ea137d4483f047192, type: 2}
+  mapStreamerSettings: {fileID: 11400000, guid: 88849399410b4015823ed25c21bdef67, type: 2}
+  builders:
+  - {fileID: 44396063}
+  - {fileID: 44396062}
 --- !u!4 &44396061
 Transform:
   m_ObjectHideFlags: 0

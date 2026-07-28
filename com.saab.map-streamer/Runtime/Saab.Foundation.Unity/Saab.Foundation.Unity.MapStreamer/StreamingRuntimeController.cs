@@ -1,0 +1,169 @@
+using GizmoSDK.Gizmo3D;
+
+using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
+using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
+
+namespace Saab.Foundation.Unity.MapStreamer
+{
+    internal sealed class StreamingRuntimeController : IStreamingRuntimeState
+    {
+        private readonly BuilderLifecycleController _builders;
+        private readonly RuntimeMapStreamerSettings _settings;
+        private readonly DynamicNodeLoadCoordinator _dynamicNodeLoads;
+        private readonly SceneTraverser _sceneTraverser;
+        private readonly NativeSceneResources _nativeScene;
+        private readonly IExternalAssetProcessor _externalAssets;
+        private readonly MapLifecycleController _mapLifecycle;
+
+        private bool _dynamicLoadsSubscribed;
+        private bool _nativeSceneInitialized;
+        private bool _externalAssetsProcessing;
+
+        public StreamingRuntimeController(
+            BuilderLifecycleController builders,
+            RuntimeMapStreamerSettings settings,
+            DynamicNodeLoadCoordinator dynamicNodeLoads,
+            SceneTraverser sceneTraverser,
+            NativeSceneResources nativeScene,
+            IExternalAssetProcessor externalAssets,
+            MapLifecycleController mapLifecycle)
+        {
+            _builders = builders;
+            _settings = settings;
+            _dynamicNodeLoads = dynamicNodeLoads;
+            _sceneTraverser = sceneTraverser;
+            _nativeScene = nativeScene;
+            _externalAssets = externalAssets;
+            _mapLifecycle = mapLifecycle;
+        }
+
+        public bool IsInitialized { get; private set; }
+        public CullTraverseAction TraverseAction { get; private set; }
+        public GizmoSDK.Gizmo3D.Camera NativeCamera => _nativeScene.Camera;
+        public Context NativeContext => _nativeScene.Context;
+
+        public bool Initialize()
+        {
+            if (IsInitialized)
+                return true;
+            if (!SDKInitializer.Initialize())
+                return false;
+
+            try
+            {
+                _builders.Initialize();
+                if (!_builders.SupportsInstancing)
+                {
+                    _settings.Options |=
+                        MapStreamerOptions.DisableInstancing;
+                }
+
+                _dynamicNodeLoads.Subscribe();
+                _dynamicLoadsSubscribed = true;
+                _sceneTraverser.SetActionReceiver(
+                    _dynamicNodeLoads.ActionReceiver);
+
+                NodeLock.WaitLockEdit();
+                try
+                {
+                    _nativeScene.Initialize();
+                    _nativeSceneInitialized = true;
+                    TraverseAction = new CullTraverseAction();
+                }
+                finally
+                {
+                    NodeLock.UnLock();
+                }
+
+                SDKInitializer.StartDynamicLoaders(_settings.DynamicLoaders);
+                _externalAssets.StartProcessing();
+                _externalAssetsProcessing = true;
+                IsInitialized = true;
+                return true;
+            }
+            catch
+            {
+                try
+                {
+                    ShutdownResources();
+                }
+                finally
+                {
+                    SDKInitializer.Shutdown();
+                }
+
+                throw;
+            }
+        }
+
+        public bool Shutdown()
+        {
+            if (!IsInitialized)
+                return false;
+
+            try
+            {
+                ShutdownResources();
+                return true;
+            }
+            finally
+            {
+                SDKInitializer.Shutdown();
+                IsInitialized = false;
+            }
+        }
+
+        private void ShutdownResources()
+        {
+            try
+            {
+                if (_externalAssetsProcessing)
+                {
+                    _externalAssets.StopProcessing();
+                    _externalAssetsProcessing = false;
+                }
+            }
+            finally
+            {
+                try
+                {
+                    SDKInitializer.StopDynamicLoaders();
+                    if (_nativeSceneInitialized)
+                        _mapLifecycle.Reset();
+                }
+                finally
+                {
+                    try
+                    {
+                        if (_nativeSceneInitialized)
+                        {
+                            NodeLock.WaitLockEdit();
+                            try
+                            {
+                                _nativeScene.Dispose();
+                                _nativeSceneInitialized = false;
+                                TraverseAction = null;
+                            }
+                            finally
+                            {
+                                NodeLock.UnLock();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (_dynamicLoadsSubscribed)
+                        {
+                            _dynamicNodeLoads.Unsubscribe();
+                            _sceneTraverser.SetActionReceiver(null);
+                            _dynamicLoadsSubscribed = false;
+                        }
+                    }
+
+                }
+            }
+        }
+    }
+}

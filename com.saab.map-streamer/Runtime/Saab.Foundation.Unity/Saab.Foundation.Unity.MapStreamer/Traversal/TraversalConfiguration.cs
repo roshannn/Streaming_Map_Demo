@@ -4,13 +4,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
 {
     internal sealed class TraversalConfiguration : ITraversalConfiguration
     {
-        public IntersectMaskValue IntersectMask { get; private set; }
-        public SceneManagerOptions Options { get; private set; }
+        private readonly RuntimeMapStreamerSettings _settings;
 
-        public void Update(in SceneManagerSettings settings)
+        public TraversalConfiguration(RuntimeMapStreamerSettings settings)
         {
-            IntersectMask = settings.IntersectMask;
-            Options = settings.Options;
+            _settings = settings;
         }
+
+        public IntersectMaskValue IntersectMask => _settings.IntersectMask;
+        public MapStreamerOptions Options => _settings.Options;
     }
 }

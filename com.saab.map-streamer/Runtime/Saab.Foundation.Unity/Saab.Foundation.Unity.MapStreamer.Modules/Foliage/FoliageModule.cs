@@ -72,7 +72,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class FoliageModule : MonoBehaviour
     {
-        private SceneManager _sceneManager;
+        private IPostTraversalEvents _traversalEvents;
+        private CameraControl _cameraControl;
         private NodeEvents _nodeEvents;
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
@@ -160,10 +161,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         [Inject]
         private void Construct(
-            SceneManager sceneManager,
+            IPostTraversalEvents traversalEvents,
+            CameraControl cameraControl,
             NodeEvents nodeEvents)
         {
-            _sceneManager = sceneManager;
+            _traversalEvents = traversalEvents;
+            _cameraControl = cameraControl;
             _nodeEvents = nodeEvents;
         }
 
@@ -177,7 +180,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
             _nodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
 
-            _sceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
+            _traversalEvents.OnPostTraverse += SceneManager_OnPostTraverse;
 
             for (int i = 0; i < Features.Count; i++)
             {
@@ -447,16 +450,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 _nodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
             }
 
-            if (_sceneManager != null)
-                _sceneManager.OnPostTraverse -= SceneManager_OnPostTraverse;
+            if (_traversalEvents != null)
+                _traversalEvents.OnPostTraverse -= SceneManager_OnPostTraverse;
 
             foreach (var set in Features)
             {
                 set?.Dispose();
             }
 
-            _surfaceheightMap?.Release();
-            _depthMap?.Release();
+            if (_surfaceheightMap)
+                _surfaceheightMap.Release();
+            if (_depthMap)
+                _depthMap.Release();
             _pixelToWorld?.Release();
 
             _indexBuffer?.Release();
@@ -656,7 +661,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             else
                 UnsafeUtility.SetLeakDetectionMode(NativeLeakDetectionMode.Disabled);
 
-            var cam = _sceneManager.SceneManagerCamera.Camera;
+            var cam = _cameraControl.Camera;
             GenerateFrustumPlane(cam);
 
             if (cam.depthTextureMode != DepthTextureMode.Depth)

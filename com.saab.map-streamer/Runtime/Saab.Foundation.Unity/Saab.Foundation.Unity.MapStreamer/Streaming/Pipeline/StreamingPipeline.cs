@@ -7,8 +7,8 @@ using GizmoSDK.Gizmo3D;
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
-using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
 using Saab.Unity.Extensions;
 
@@ -31,37 +31,51 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             new ProfilerMarker(ProfilerCategory.Render, "SM-Traverse");
 
         private readonly IStreamingLock _streamingLock;
-        private readonly ITraversalConfiguration _traversalConfiguration;
         private readonly DynamicNodeLoadCoordinator _dynamicNodeLoads;
         private readonly NodeHandlePool _nodeHandlePool;
         private readonly NodeBuildCoordinator _buildCoordinator;
         private readonly INodeUpdateRegistry _nodeUpdates;
+        private readonly RuntimeMapStreamerSettings _settings;
+        private readonly CameraControl _cameraControl;
+        private readonly IStreamingRuntimeState _runtime;
         private readonly Stopwatch _frameTimer = new Stopwatch();
 
         private bool _ownsLock;
 
         public StreamingPipeline(
             IStreamingLock streamingLock,
-            ITraversalConfiguration traversalConfiguration,
             DynamicNodeLoadCoordinator dynamicNodeLoads,
             NodeHandlePool nodeHandlePool,
             NodeBuildCoordinator buildCoordinator,
-            INodeUpdateRegistry nodeUpdates)
+            INodeUpdateRegistry nodeUpdates,
+            RuntimeMapStreamerSettings settings,
+            CameraControl cameraControl,
+            IStreamingRuntimeState runtime)
         {
             _streamingLock = streamingLock;
-            _traversalConfiguration = traversalConfiguration;
             _dynamicNodeLoads = dynamicNodeLoads;
             _nodeHandlePool = nodeHandlePool;
             _buildCoordinator = buildCoordinator;
             _nodeUpdates = nodeUpdates;
+            _settings = settings;
+            _cameraControl = cameraControl;
+            _runtime = runtime;
         }
+
+        internal event Action<bool> PreTraverse;
+        internal event Action<double> CameraUpdated;
 
         internal StreamingPipelineState State { get; private set; } =
             StreamingPipelineState.Unlocked;
 
-        public bool ProcessFrame(in StreamingFrameContext context)
+        public bool ProcessFrame()
         {
-            if (context.UnityCamera == null || context.NativeCamera == null)
+            var unityCamera = _cameraControl.Camera;
+            if (!_runtime.IsInitialized ||
+                unityCamera == null ||
+                _runtime.NativeCamera == null ||
+                _runtime.NativeContext == null ||
+                _runtime.TraverseAction == null)
                 return false;
 
             // A callback may attempt to render recursively. Reject it without
@@ -80,10 +94,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
 
             try
             {
-                if (!TryBeginEditing(context))
+                if (!TryBeginEditing())
                     return false;
 
-                ProcessPendingLoads(context.Settings);
+                ProcessPendingLoads();
 
                 if (!TryBeginRendering())
                     return false;
@@ -97,13 +111,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                     return false;
                 }
 
-                TraverseNativeScene(context);
+                TraverseNativeScene(unityCamera);
                 traversed = true;
 
                 if (!TryBeginPostProcessing())
                     return traversed;
 
-                ProcessTraversalResults(context.Settings);
+                ProcessTraversalResults();
                 CompleteFrame();
                 return traversed;
             }
@@ -128,7 +142,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             }
         }
 
-        private bool TryBeginEditing(in StreamingFrameContext context)
+        private bool TryBeginEditing()
         {
             if (State != StreamingPipelineState.Unlocked)
                 return RejectTransition(StreamingPipelineState.Editing);
@@ -140,22 +154,19 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                     MessageLevel.DEBUG,
                     "Lock contention detected! NodeLock::TryLockEdit() FRAME LOST " +
                     $"[state={State}]");
-                context.SceneCamera.PreTraverse(false);
-                context.NotifyPreTraverse?.Invoke(false);
+                PreTraverse?.Invoke(false);
                 return false;
             }
 
             _ownsLock = true;
             State = StreamingPipelineState.Editing;
-            context.SceneCamera.PreTraverse(true);
-            context.NotifyPreTraverse?.Invoke(true);
+            PreTraverse?.Invoke(true);
             return true;
         }
 
-        private void ProcessPendingLoads(in SceneManagerSettings settings)
+        private void ProcessPendingLoads()
         {
             EnsureState(StreamingPipelineState.Editing);
-            _traversalConfiguration.Update(settings);
 
             using (ProfilerMarkerTraverse.Auto())
                 _dynamicNodeLoads.ProcessLoads();
@@ -188,48 +199,48 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             return true;
         }
 
-        private void TraverseNativeScene(in StreamingFrameContext context)
+        private void TraverseNativeScene(UnityEngine.Camera unityCamera)
         {
             EnsureState(StreamingPipelineState.Rendering);
 
             using (ProfilerMarkerCull.Auto())
             {
-                var lodFactor = context.SceneCamera.LodFactor;
-                Lod.SetLODFactor(context.NativeContext, lodFactor);
+                var lodFactor = _cameraControl.LodFactor;
+                Lod.SetLODFactor(_runtime.NativeContext, lodFactor);
                 MapControl.SystemMap.LodFactor = lodFactor;
 
                 var renderTime = GizmoSDK.GizmoBase.Time.SystemSeconds;
-                renderTime = context.SceneCamera.UpdateCamera(renderTime);
-                context.NotifyCameraUpdated?.Invoke(renderTime);
-                context.NativeContext.CurrentRenderTime = renderTime;
+                renderTime = _cameraControl.UpdateCamera(renderTime);
+                CameraUpdated?.Invoke(renderTime);
+                _runtime.NativeContext.CurrentRenderTime = renderTime;
 
-                if (context.NativeCamera is PerspCamera perspectiveCamera)
+                if (_runtime.NativeCamera is PerspCamera perspectiveCamera)
                 {
-                    perspectiveCamera.VerticalFOV = context.UnityCamera.fieldOfView;
+                    perspectiveCamera.VerticalFOV = unityCamera.fieldOfView;
                     perspectiveCamera.HorizontalFOV =
                         2 * Mathf.Atan(
                             Mathf.Tan(
-                                context.UnityCamera.fieldOfView *
+                                unityCamera.fieldOfView *
                                 Mathf.Deg2Rad / 2) *
-                            context.UnityCamera.aspect) *
+                            unityCamera.aspect) *
                         Mathf.Rad2Deg;
                     perspectiveCamera.NearClipPlane =
-                        context.UnityCamera.nearClipPlane;
+                        unityCamera.nearClipPlane;
                     perspectiveCamera.FarClipPlane =
-                        context.UnityCamera.farClipPlane;
+                        unityCamera.farClipPlane;
                 }
 
-                context.NativeCamera.Transform =
-                    context.UnityCamera.transform.worldToLocalMatrix
+                _runtime.NativeCamera.Transform =
+                    unityCamera.transform.worldToLocalMatrix
                         .ToZFlippedMatrix4();
-                context.NativeCamera.Position =
-                    context.SceneCamera.GlobalPosition;
-                context.NativeCamera.Render(
-                    context.NativeContext,
+                _runtime.NativeCamera.Position =
+                    _cameraControl.GlobalPosition;
+                _runtime.NativeCamera.Render(
+                    _runtime.NativeContext,
                     1000,
                     1000,
                     1000,
-                    context.TraverseAction);
+                    _runtime.TraverseAction);
             }
         }
 
@@ -260,8 +271,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             return true;
         }
 
-        private void ProcessTraversalResults(
-            in SceneManagerSettings settings)
+        private void ProcessTraversalResults()
         {
             EnsureState(StreamingPipelineState.PostProcessing);
             _dynamicNodeLoads.ProcessActivations();
@@ -271,10 +281,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                 TimeSpan.FromMilliseconds(1));
 
             var remainingBuildTime =
-                TimeSpan.FromSeconds(settings.MaxBuildTime) -
+                TimeSpan.FromSeconds(_settings.MaxBuildTime) -
                 _frameTimer.Elapsed;
             var minimumBuildTime =
-                TimeSpan.FromSeconds(settings.MinBuildTime);
+                TimeSpan.FromSeconds(_settings.MinBuildTime);
             if (remainingBuildTime < minimumBuildTime)
                 remainingBuildTime = minimumBuildTime;
 

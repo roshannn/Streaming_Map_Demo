@@ -13,7 +13,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
 
         public TraversalResult? Evaluate(
             Node node,
-            SceneManagerOptions options,
+            MapStreamerOptions options,
             ref TraversalContext context)
         {
             var isAssetTopNode =
@@ -49,14 +49,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             return TraversalResult.Deferred();
         }
 
-        public bool IsInstancingDisabled(SceneManagerOptions options)
+        public bool IsInstancingDisabled(MapStreamerOptions options)
         {
-            return options.HasFlag(SceneManagerOptions.DisableInstancing);
+            return options.HasFlag(MapStreamerOptions.DisableInstancing);
         }
 
-        public bool UsesLazyLoading(SceneManagerOptions options)
+        public bool UsesLazyLoading(MapStreamerOptions options)
         {
-            return options.HasFlag(SceneManagerOptions.LazyLoadAssets);
+            return options.HasFlag(MapStreamerOptions.LazyLoadAssets);
         }
 
         public bool TryTakeDeferred(uint nodeId, out DeferredAssetTraversal deferredTraversal)

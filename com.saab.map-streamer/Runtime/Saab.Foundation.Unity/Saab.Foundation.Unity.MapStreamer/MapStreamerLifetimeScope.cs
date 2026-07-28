@@ -9,8 +9,8 @@ using Saab.Foundation.Unity.MapStreamer.Streaming.Synchronization;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
-using Saab.Unity.Initializer;
 
+using UnityEngine;
 using VContainer;
 using VContainer.Unity;
 
@@ -18,23 +18,33 @@ namespace Saab.Foundation.Unity.MapStreamer
 {
     public sealed class MapStreamerLifetimeScope : LifetimeScope
     {
-        [UnityEngine.SerializeField]
+        [SerializeField]
         private MapConfig mapConfig;
+
+        [SerializeField]
+        private MapStreamerSettings mapStreamerSettings;
+
+        [SerializeField]
+        private NodeBuilderBase[] builders = Array.Empty<NodeBuilderBase>();
 
         protected override void Configure(IContainerBuilder builder)
         {
             if (mapConfig == null)
                 throw new InvalidOperationException(
                     "MapConfig must be assigned on MapStreamerLifetimeScope.");
+            if (mapStreamerSettings == null)
+                throw new InvalidOperationException(
+                    "MapStreamerSettings must be assigned on MapStreamerLifetimeScope.");
 
             builder.RegisterInstance(mapConfig);
+            builder.RegisterInstance(mapStreamerSettings.CreateRuntimeCopy());
+            builder.RegisterInstance(builders);
 
             builder.RegisterComponentInHierarchy<NodeEvents>();
-            builder.RegisterComponentInHierarchy<SceneManager>();
-            builder.RegisterComponentInHierarchy<CameraControl>()
+            builder.RegisterComponentInHierarchy<SceneManager>()
                 .AsSelf()
-                .As<ISceneManagerCamera>();
-            builder.RegisterComponentInHierarchy<Initializer>();
+                .As<IPostTraversalEvents>();
+            builder.RegisterComponentInHierarchy<CameraControl>();
             builder.RegisterComponentInHierarchy<MapShadingModule>();
             builder.RegisterComponentInHierarchy<FoliageModule>();
 
@@ -43,7 +53,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<NodeUpdateRegistry>(Lifetime.Scoped)
                 .As<INodeUpdateRegistry>();
             builder.Register<ExternalAssetLoader>(Lifetime.Scoped)
-                .As<IExternalAssetQueue>();
+                .As<IExternalAssetQueue>()
+                .As<IExternalAssetProcessor>()
+                .As<IExternalAssetResetter>();
             builder.Register<TraversalNodeFactory>(Lifetime.Scoped)
                 .As<ITraversalNodeFactory>();
             builder.Register<GeometryNodeOperations>(Lifetime.Scoped)
@@ -61,6 +73,11 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<NativeSceneResources>(Lifetime.Scoped);
 
             builder.Register<MapLifecycleController>(Lifetime.Scoped);
+            builder.Register<StreamingContentResetter>(Lifetime.Scoped);
+            builder.Register<BuilderLifecycleController>(Lifetime.Scoped);
+            builder.Register<StreamingRuntimeController>(Lifetime.Scoped)
+                .AsSelf()
+                .As<IStreamingRuntimeState>();
             builder.Register<StreamingLock>(Lifetime.Scoped)
                 .As<IStreamingLock>();
             builder.Register<StreamingPipeline>(Lifetime.Scoped);
