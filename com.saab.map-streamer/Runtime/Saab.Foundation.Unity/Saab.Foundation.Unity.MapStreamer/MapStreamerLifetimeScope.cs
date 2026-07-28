@@ -59,6 +59,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             builder.Register<SceneTraverser>(Lifetime.Scoped);
             builder.Register<DynamicNodeLoadCoordinator>(Lifetime.Scoped);
             builder.Register<NativeSceneResources>(Lifetime.Scoped);
+
+            builder.Register<MapLifecycleController>(Lifetime.Scoped);
             builder.Register<StreamingLock>(Lifetime.Scoped)
                 .As<IStreamingLock>();
             builder.Register<StreamingPipeline>(Lifetime.Scoped);

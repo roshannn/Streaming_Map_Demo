@@ -59,10 +59,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
         internal StreamingPipelineState State { get; private set; } =
             StreamingPipelineState.Unlocked;
 
-        public void ProcessFrame(in StreamingFrameContext context)
+        public bool ProcessFrame(in StreamingFrameContext context)
         {
             if (context.UnityCamera == null || context.NativeCamera == null)
-                return;
+                return false;
 
             // A callback may attempt to render recursively. Reject it without
             // entering the cleanup path, which belongs to the active frame.
@@ -72,20 +72,21 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                     MessageSource,
                     MessageLevel.WARNING,
                     $"Cannot begin a frame while state is {State}.");
-                return;
+                return false;
             }
 
             _frameTimer.Restart();
+            var traversed = false;
 
             try
             {
                 if (!TryBeginEditing(context))
-                    return;
+                    return false;
 
                 ProcessPendingLoads(context.Settings);
 
                 if (!TryBeginRendering())
-                    return;
+                    return false;
 
                 if (_dynamicNodeLoads.HasPendingLoads)
                 {
@@ -93,16 +94,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                         StreamingPipelineState.Rendering,
                         "Mismatch in virtual context (loaded/unloaded data)",
                         MessageLevel.FATAL);
-                    return;
+                    return false;
                 }
 
                 TraverseNativeScene(context);
+                traversed = true;
 
                 if (!TryBeginPostProcessing())
-                    return;
+                    return traversed;
 
                 ProcessTraversalResults(context.Settings);
                 CompleteFrame();
+                return traversed;
             }
             catch (Exception exception)
             {
