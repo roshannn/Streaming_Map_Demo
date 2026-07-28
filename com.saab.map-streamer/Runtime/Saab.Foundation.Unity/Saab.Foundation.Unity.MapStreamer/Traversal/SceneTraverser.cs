@@ -5,8 +5,11 @@ using GizmoSDK.Gizmo3D;
 
 using UnityEngine;
 
-using Saab.Foundation.Unity.MapStreamer.Traversal.Processors;
+using Saab.Foundation.Unity.MapStreamer.ExternalAssets;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Contracts;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Operations;
+using Saab.Foundation.Unity.MapStreamer.Traversal.Processing;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal
 {

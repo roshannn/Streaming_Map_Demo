@@ -5,6 +5,8 @@ using GizmoSDK.GizmoBase;
 using GizmoSDK.Gizmo3D;
 
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Nodes.Pooling;
+using Saab.Foundation.Unity.MapStreamer.Nodes.Processing;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Utility.Unity.NodeUtils;
 

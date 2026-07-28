@@ -1,6 +1,7 @@
 // Copyright 2021 saab AB
 
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
+using Saab.Foundation.Unity.MapStreamer.Nodes.Processing;
 using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal

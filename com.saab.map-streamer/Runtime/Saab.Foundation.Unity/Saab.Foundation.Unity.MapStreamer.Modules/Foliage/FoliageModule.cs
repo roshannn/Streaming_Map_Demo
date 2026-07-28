@@ -16,6 +16,7 @@
 using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.Runtime;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Utility.GfxCaps;
 using System;
