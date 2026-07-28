@@ -4,8 +4,6 @@ using GizmoSDK.Gizmo3D;
 
 using Saab.Foundation.Map;
 
-using gzCamera = GizmoSDK.Gizmo3D.Camera;
-
 namespace Saab.Foundation.Unity.MapStreamer.Streaming
 {
     /// <summary>
@@ -15,34 +13,33 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
     /// </summary>
     internal sealed class NativeSceneResources : IDisposable
     {
+        private readonly NativeCameraController _cameraController;
         private Scene _scene;
 
-        public gzCamera Camera { get; private set; }
         public Context Context { get; private set; }
-        public bool IsInitialized => Camera != null;
+        public bool IsInitialized => _scene != null;
+
+        public NativeSceneResources(NativeCameraController cameraController)
+        {
+            _cameraController = cameraController;
+        }
+
+        public void SetStreamingCamera(IStreamingCamera streamingCamera)
+        {
+            _cameraController.SetStreamingCamera(streamingCamera);
+        }
 
         public void Initialize()
         {
             if (IsInitialized)
                 return;
 
-            var camera = new PerspCamera("Test")
-            {
-                RoiPosition = true,
-            };
             var scene = new Scene("Scene");
             var context = new Context();
 
-            camera.Scene = scene;
-            MapControl.SystemMap.Camera = camera;
-
-#if DEBUG_CAMERA
-            camera.Debug(context);
-#endif
-
-            Camera = camera;
             _scene = scene;
             Context = context;
+            _cameraController.Initialize(scene, MapControl.SystemMap);
         }
 
         public void AddNode(Node node)
@@ -67,15 +64,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             if (!IsInitialized)
                 return;
 
-#if DEBUG_CAMERA
-            Camera.Debug(Context, false);
-#endif
-
-            Camera.Dispose();
+            _cameraController.Dispose(Context);
             Context.Dispose();
             _scene.Dispose();
 
-            Camera = null;
             Context = null;
             _scene = null;
         }

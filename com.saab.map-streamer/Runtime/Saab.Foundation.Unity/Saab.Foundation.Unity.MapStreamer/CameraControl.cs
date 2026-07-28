@@ -81,11 +81,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         private AutoMovement _autoMovement = default;
         private readonly HashSet<ActionType> _inputActions = new HashSet<ActionType>();
         private InputController _inputController;
-        private bool _hasLoggedStreamingUpdate;
 
         private void Awake()
         {
-            Debug.Log("CameraControl.Awake: initializing input and streaming camera.");
             _inputController = GetComponent<InputController>();
             _inputController.InputPerformed += ProcessInput;
         }
@@ -308,14 +306,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         double IStreamingCamera.Update(double renderTime)
         {
-            if (!_hasLoggedStreamingUpdate)
-            {
-                _hasLoggedStreamingUpdate = true;
-                Debug.Log(
-                    $"CameraControl.IStreamingCamera.Update: first update at " +
-                    $"render time {renderTime}.");
-            }
-
             return UpdateStreamingCamera(renderTime);
         }
 

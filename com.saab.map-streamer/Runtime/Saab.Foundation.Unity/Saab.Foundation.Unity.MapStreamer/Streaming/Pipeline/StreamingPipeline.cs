@@ -37,7 +37,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
         private readonly Stopwatch _frameTimer = new Stopwatch();
 
         private bool _ownsLock;
-        private bool _hasLoggedFirstFrame;
 
         public StreamingPipeline(
             IStreamingLock streamingLock,
@@ -55,26 +54,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
             _buildCoordinator = buildCoordinator;
             _nodeUpdates = nodeUpdates;
             _cameraController = cameraController;
-            global::UnityEngine.Debug.Log(
-                "StreamingPipeline: constructed with NativeCameraController.");
         }
 
         internal StreamingPipelineState State { get; private set; } =
             StreamingPipelineState.Unlocked;
 
-        public void ProcessFrame(in StreamingFrameContext context)
+        public bool ProcessFrame(in StreamingFrameContext context)
         {
-            if (!_hasLoggedFirstFrame)
-            {
-                _hasLoggedFirstFrame = true;
-                global::UnityEngine.Debug.Log(
-                    $"StreamingPipeline.ProcessFrame: first frame; " +
-                    $"camera ready = {_cameraController.IsReady}, " +
-                    $"native context assigned = {context.NativeContext != null}.");
-            }
-
             if (!_cameraController.IsReady || context.NativeContext == null)
-                return;
+                return false;
 
             // A callback may attempt to render recursively. Reject it without
             // entering the cleanup path, which belongs to the active frame.
@@ -84,20 +72,21 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                     MessageSource,
                     MessageLevel.WARNING,
                     $"Cannot begin a frame while state is {State}.");
-                return;
+                return false;
             }
 
             _frameTimer.Restart();
+            var traversed = false;
 
             try
             {
                 if (!TryBeginEditing(context))
-                    return;
+                    return false;
 
                 ProcessPendingLoads(context.Settings);
 
                 if (!TryBeginRendering())
-                    return;
+                    return false;
 
                 if (_dynamicNodeLoads.HasPendingLoads)
                 {
@@ -105,16 +94,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                         StreamingPipelineState.Rendering,
                         "Mismatch in virtual context (loaded/unloaded data)",
                         MessageLevel.FATAL);
-                    return;
+                    return false;
                 }
 
                 TraverseNativeScene(context);
+                traversed = true;
 
                 if (!TryBeginPostProcessing())
-                    return;
+                    return traversed;
 
                 ProcessTraversalResults(context.Settings);
                 CompleteFrame();
+                return traversed;
             }
             catch (Exception exception)
             {
@@ -211,11 +202,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline
                 renderTime = _cameraController.Update(renderTime);
                 context.NotifyCameraUpdated?.Invoke(renderTime);
 
-                _cameraController.NativeCamera.Render(
+                _cameraController.Render(
                     context.NativeContext,
-                    1000,
-                    1000,
-                    1000,
                     context.TraverseAction);
             }
         }

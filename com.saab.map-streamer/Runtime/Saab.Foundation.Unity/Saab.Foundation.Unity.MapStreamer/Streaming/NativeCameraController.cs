@@ -2,6 +2,7 @@ using System;
 
 using GizmoSDK.Gizmo3D;
 
+using Saab.Foundation.Map;
 using Saab.Unity.Extensions;
 
 using UnityEngine;
@@ -12,32 +13,73 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
 {
     internal sealed class NativeCameraController
     {
-        public NativeCamera NativeCamera { get; private set; }
-        public IStreamingCamera StreamingCamera { get; private set; }
-        public bool IsReady => NativeCamera != null && StreamingCamera != null;
+        private NativeCamera _nativeCamera;
+        private MapControl _mapControl;
 
-        public void SetNativeCamera(NativeCamera nativeCamera)
+        public IStreamingCamera StreamingCamera { get; private set; }
+        public bool IsReady => _nativeCamera != null && StreamingCamera != null;
+
+        public void Initialize(
+            Scene nativeScene,
+            MapControl mapControl)
         {
-            NativeCamera = nativeCamera ??
-                throw new ArgumentNullException(nameof(nativeCamera));
-            Debug.Log("Native camera assigned.");
+            if (nativeScene == null)
+                throw new ArgumentNullException(nameof(nativeScene));
+            if (mapControl == null)
+                throw new ArgumentNullException(nameof(mapControl));
+            if (_nativeCamera != null)
+                return;
+
+            var nativeCamera = new PerspCamera("Test")
+            {
+                RoiPosition = true,
+                Scene = nativeScene,
+            };
+
+            _nativeCamera = nativeCamera;
+            _mapControl = mapControl;
+            mapControl.Camera = nativeCamera;
             SynchronizeInitialStateIfReady();
         }
 
-        public void SetUnityCamera(IStreamingCamera streamingCamera)
+        public void SetStreamingCamera(IStreamingCamera streamingCamera)
         {
             StreamingCamera = streamingCamera ??
                 throw new ArgumentNullException(nameof(streamingCamera));
-            Debug.Log(
-                $"Unity camera assigned: " +
-                $"{streamingCamera.UnityCamera?.name ?? "<missing>"}.");
             SynchronizeInitialStateIfReady();
         }
 
-        public void ClearNativeCamera()
+        public void Render(
+            Context nativeContext,
+            CullTraverseAction traverseAction)
         {
-            NativeCamera = null;
-            Debug.Log("Native camera reference cleared.");
+            EnsureReady();
+            _nativeCamera.Render(
+                nativeContext,
+                1000,
+                1000,
+                1000,
+                traverseAction);
+        }
+
+        public void Dispose(Context nativeContext)
+        {
+            if (_nativeCamera == null)
+                return;
+
+#if DEBUG_CAMERA
+            _nativeCamera.Debug(nativeContext, false);
+#endif
+
+            if (_mapControl != null &&
+                ReferenceEquals(_mapControl.Camera, _nativeCamera))
+            {
+                _mapControl.Camera = null;
+            }
+
+            _nativeCamera.Dispose();
+            _nativeCamera = null;
+            _mapControl = null;
         }
 
         public double Update(double renderTime)
@@ -52,19 +94,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
         private void SynchronizeInitialStateIfReady()
         {
             if (!IsReady)
-            {
-                Debug.Log(
-                    "Initial camera synchronization deferred until both " +
-                    "cameras are assigned.");
                 return;
-            }
 
             var unityCamera = StreamingCamera.UnityCamera;
             if (unityCamera == null)
                 throw new InvalidOperationException(
                     "The assigned streaming camera has no Unity camera.");
 
-            if (NativeCamera is PerspCamera perspectiveCamera)
+            if (_nativeCamera is PerspCamera perspectiveCamera)
             {
                 perspectiveCamera.VerticalFOV = unityCamera.fieldOfView;
                 perspectiveCamera.HorizontalFOV =
@@ -78,8 +115,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             }
 
             SynchronizePose();
-            Debug.Log(
-                $"Initial camera state synchronized from {unityCamera.name}.");
         }
 
         private void SynchronizePose()
@@ -89,9 +124,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
                 throw new InvalidOperationException(
                     "The assigned streaming camera has no Unity camera.");
 
-            NativeCamera.Transform =
+            _nativeCamera.Transform =
                 unityCamera.transform.worldToLocalMatrix.ToZFlippedMatrix4();
-            NativeCamera.Position = StreamingCamera.GlobalPosition;
+            _nativeCamera.Position = StreamingCamera.GlobalPosition;
         }
 
         private void EnsureReady()
