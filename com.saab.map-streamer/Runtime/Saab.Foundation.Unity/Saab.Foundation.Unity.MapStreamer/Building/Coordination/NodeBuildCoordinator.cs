@@ -7,10 +7,11 @@ using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Building.Builders;
 using Saab.Foundation.Unity.MapStreamer.Nodes.Processing;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 namespace Saab.Foundation.Unity.MapStreamer.Building.Coordination
 {
-    internal sealed class NodeBuildCoordinator
+    internal sealed class NodeBuildCoordinator : IBuildScheduler
     {
         private readonly Queue<PendingNodeBuild> _pending =
             new Queue<PendingNodeBuild>(1000);

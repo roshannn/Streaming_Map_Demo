@@ -5,6 +5,7 @@ using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using GizmoSDK.Gizmo3D;
 
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 using UnityEngine;
 using unTransform = UnityEngine.Transform;
@@ -14,7 +15,7 @@ using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 
 namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
 {
-    internal sealed class NodeHandlePool
+    internal sealed class NodeHandlePool : INodePoolMaintenance
     {
         private readonly Stack<NodeHandle>[] _free =
             new Stack<NodeHandle>[byte.MaxValue];

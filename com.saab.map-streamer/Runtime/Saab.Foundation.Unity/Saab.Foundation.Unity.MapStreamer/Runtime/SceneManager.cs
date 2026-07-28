@@ -1,10 +1,7 @@
 using System;
 
-using GizmoSDK.Gizmo3D;
-
-using Saab.Foundation.Unity.MapStreamer.Streaming.Pipeline;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
-using Saab.Foundation.Unity.MapStreamer.Maps;
 using Saab.Foundation.Unity.MapStreamer.Runtime;
 
 using UnityEngine;
@@ -18,7 +15,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 {
     [RequireComponent(typeof(NodeEvents))]
     [RequireComponent(typeof(MapStreamerLifetimeScope))]
-    public sealed class SceneManager : MonoBehaviour, IPostTraversalEvents
+    public sealed class SceneManager : MonoBehaviour
     {
         private static readonly ProfilerMarker ProfilerMarkerRender =
             new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
@@ -31,12 +28,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         private bool _initialized;
         private bool _resumeOnEnable;
 
-        public event Action<bool> OnPreTraverse;
-        public event Action<bool> OnPostTraverse;
-        public event Action<Node> OnMapChanged;
-        public event MapLoadErrorHandler OnMapLoadError;
-        public event Action<double> OnUpdateCamera;
-
         [Inject]
         private void Construct(
             MapLifecycleController mapLifecycle,
@@ -48,8 +39,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             _runtime = runtime;
             _streamingPipeline = streamingPipeline;
             _settings = settings;
-            _streamingPipeline.PreTraverse += NotifyPreTraverse;
-            _streamingPipeline.CameraUpdated += NotifyCameraUpdated;
         }
 
         public bool Init(bool loadMap = true)
@@ -81,11 +70,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public bool LoadMap()
         {
-            if (!_mapLifecycle.Load(OnMapLoadError, out var node))
-                return false;
-
-            OnMapChanged?.Invoke(node);
-            return true;
+            return _mapLifecycle.Load();
         }
 
         public void ResetMap()
@@ -98,14 +83,10 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (!_initialized)
                 return;
 
-            var traversed = false;
             using (ProfilerMarkerRender.Auto())
             {
-                traversed = _streamingPipeline.ProcessFrame();
+                _streamingPipeline.ProcessFrame();
             }
-
-            if (traversed)
-                OnPostTraverse?.Invoke(false);
         }
 
         private void Start()
@@ -129,15 +110,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             Uninitialize();
         }
 
-        private void OnDestroy()
-        {
-            if (_streamingPipeline == null)
-                return;
-
-            _streamingPipeline.PreTraverse -= NotifyPreTraverse;
-            _streamingPipeline.CameraUpdated -= NotifyCameraUpdated;
-        }
-
         private void Update()
         {
             if (_runtime == null || _settings == null)
@@ -147,16 +119,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             if (_settings.Options.HasFlag(MapStreamerOptions.RenderInUpdate))
                 Render();
-        }
-
-        private void NotifyPreTraverse(bool locked)
-        {
-            OnPreTraverse?.Invoke(locked);
-        }
-
-        private void NotifyCameraUpdated(double renderTime)
-        {
-            OnUpdateCamera?.Invoke(renderTime);
         }
 
         private void ResumeIfNeeded()

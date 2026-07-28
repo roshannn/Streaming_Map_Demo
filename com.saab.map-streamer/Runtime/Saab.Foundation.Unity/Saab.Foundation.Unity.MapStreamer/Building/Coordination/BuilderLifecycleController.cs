@@ -5,10 +5,11 @@ using GizmoSDK.GizmoBase;
 
 using Saab.Foundation.Unity.MapStreamer.NodeProcessing;
 using Saab.Foundation.Unity.MapStreamer.Nodes.Pooling;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 namespace Saab.Foundation.Unity.MapStreamer.Building.Coordination
 {
-    internal sealed class BuilderLifecycleController
+    internal sealed class BuilderLifecycleController : IBuilderRuntime
     {
         private readonly NodeBuilderBase[] _defaultBuilders;
         private readonly GeometryBuilderRegistry _builders;

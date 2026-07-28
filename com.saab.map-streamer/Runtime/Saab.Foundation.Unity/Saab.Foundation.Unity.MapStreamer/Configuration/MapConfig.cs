@@ -1,4 +1,5 @@
 using UnityEngine;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
@@ -11,7 +12,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     [CreateAssetMenu(
         fileName = "MapConfig",
         menuName = "Saab/Map Streamer/Map Config")]
-    public sealed class MapConfig : ScriptableObject
+    public sealed class MapConfig : ScriptableObject, IMapConfiguration
     {
         [SerializeField]
         private MapSource source = MapSource.Remote;

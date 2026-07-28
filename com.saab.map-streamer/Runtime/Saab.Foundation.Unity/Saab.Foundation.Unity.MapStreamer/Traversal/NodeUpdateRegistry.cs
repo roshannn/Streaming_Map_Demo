@@ -2,11 +2,14 @@
 
 using System.Collections.Generic;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Contracts;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Traversal
 {
-    internal sealed class NodeUpdateRegistry : INodeUpdateRegistry
+    internal sealed class NodeUpdateRegistry :
+        INodeUpdateRegistry,
+        INodeUpdateProcessor
     {
         private readonly LinkedList<GameObject> _nodes =
             new LinkedList<GameObject>();

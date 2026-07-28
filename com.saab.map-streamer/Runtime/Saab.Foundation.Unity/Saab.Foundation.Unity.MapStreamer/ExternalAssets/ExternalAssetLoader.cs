@@ -5,13 +5,15 @@ using System.Threading.Tasks;
 
 using UnityEngine;
 using UnityEngine.Networking;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 namespace Saab.Foundation.Unity.MapStreamer.ExternalAssets
 {
     internal sealed class ExternalAssetLoader :
         IExternalAssetQueue,
         IExternalAssetProcessor,
-        IExternalAssetResetter
+        IExternalAssetResetter,
+        IExternalAssetRuntime
     {
         private readonly Stack<ExternalAssetRequest> _pending =
             new Stack<ExternalAssetRequest>(100);

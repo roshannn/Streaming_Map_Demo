@@ -46,7 +46,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         }
     }
 
-    public sealed class RuntimeMapStreamerSettings
+    public sealed class RuntimeMapStreamerSettings :
+        Streaming.IStreamingBudget,
+        Streaming.IStreamingRuntimeOptions
     {
         public RuntimeMapStreamerSettings(
             double maxBuildTime,
@@ -64,6 +66,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public double MaxBuildTime { get; set; }
         public double MinBuildTime { get; set; }
+        double Streaming.IStreamingBudget.MaximumBuildTime => MaxBuildTime;
+        double Streaming.IStreamingBudget.MinimumBuildTime => MinBuildTime;
+        byte Streaming.IStreamingRuntimeOptions.DynamicLoaderCount =>
+            DynamicLoaders;
+        void Streaming.IStreamingRuntimeOptions.DisableInstancing() =>
+            Options |= MapStreamerOptions.DisableInstancing;
         public byte DynamicLoaders { get; set; }
         public IntersectMaskValue IntersectMask { get; set; }
         public MapStreamerOptions Options { get; set; }

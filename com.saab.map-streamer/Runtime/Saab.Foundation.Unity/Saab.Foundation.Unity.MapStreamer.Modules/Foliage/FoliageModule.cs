@@ -17,6 +17,7 @@ using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.Runtime;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Utility.GfxCaps;
 using System;
@@ -71,9 +72,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         }
     }
 
-    public class FoliageModule : MonoBehaviour
+    public class FoliageModule : MonoBehaviour, IPostTraversal
     {
-        private IPostTraversalEvents _traversalEvents;
         private CameraControl _cameraControl;
         private NodeEvents _nodeEvents;
         public ComputeShader ComputeShader;
@@ -162,11 +162,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         [Inject]
         private void Construct(
-            IPostTraversalEvents traversalEvents,
             CameraControl cameraControl,
             NodeEvents nodeEvents)
         {
-            _traversalEvents = traversalEvents;
             _cameraControl = cameraControl;
             _nodeEvents = nodeEvents;
         }
@@ -180,8 +178,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
             _nodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
-
-            _traversalEvents.OnPostTraverse += SceneManager_OnPostTraverse;
 
             for (int i = 0; i < Features.Count; i++)
             {
@@ -451,9 +447,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 _nodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
             }
 
-            if (_traversalEvents != null)
-                _traversalEvents.OnPostTraverse -= SceneManager_OnPostTraverse;
-
             foreach (var set in Features)
             {
                 set?.Dispose();
@@ -643,8 +636,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "Foliage-Render");
 
-        private void SceneManager_OnPostTraverse(bool locked)
+        public void OnPostTraverse()
         {
+            if (!isActiveAndEnabled)
+                return;
+
             _profilerMarker.Begin();
 
             Render();

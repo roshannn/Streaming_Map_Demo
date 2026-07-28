@@ -1,26 +1,26 @@
 using Saab.Foundation.Map;
-using Saab.Foundation.Unity.MapStreamer.DynamicLoading;
 using Saab.Foundation.Unity.MapStreamer.Building.Coordination;
 using Saab.Foundation.Unity.MapStreamer.ExternalAssets;
 using Saab.Foundation.Unity.MapStreamer.Nodes.Pooling;
 using Saab.Foundation.Unity.MapStreamer.Nodes.Processing;
-using Saab.Foundation.Unity.MapStreamer.Streaming.Native;
+using Saab.Foundation.Unity.MapStreamer.GizmoAdapter;
 using Saab.Foundation.Unity.MapStreamer.Traversal;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Contracts;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Operations;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Runtime
 {
-    internal sealed class StreamingContentResetter
+    internal sealed class StreamingContentResetter : IStreamingContentResetter
     {
-        private readonly DynamicNodeLoadCoordinator _dynamicNodeLoads;
+        private readonly IDynamicLoadPump _dynamicNodeLoads;
         private readonly GeometryBuilderRegistry _builders;
         private readonly IGeometryNodeOperations _geometry;
         private readonly NodeHierarchyUnloader _hierarchy;
         private readonly NodeHandlePool _nodePool;
-        private readonly NativeSceneResources _nativeScene;
+        private readonly GizmoStreamingBackend _nativeScene;
         private readonly TextureManager _textures;
         private readonly MaterialManager _materials;
         private readonly SceneTraverser _sceneTraverser;
@@ -29,12 +29,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Runtime
         private readonly IExternalAssetResetter _externalAssets;
 
         public StreamingContentResetter(
-            DynamicNodeLoadCoordinator dynamicNodeLoads,
+            IDynamicLoadPump dynamicNodeLoads,
             GeometryBuilderRegistry builders,
             IGeometryNodeOperations geometry,
             NodeHierarchyUnloader hierarchy,
             NodeHandlePool nodePool,
-            NativeSceneResources nativeScene,
+            GizmoStreamingBackend nativeScene,
             TextureManager textures,
             MaterialManager materials,
             SceneTraverser sceneTraverser,

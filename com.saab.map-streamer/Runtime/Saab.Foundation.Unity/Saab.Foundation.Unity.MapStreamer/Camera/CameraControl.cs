@@ -3,6 +3,7 @@ using System;
 using GizmoSDK.GizmoBase;
 
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Unity.Extensions;
 
 using UnityEngine;
@@ -21,7 +22,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         public float tilt;
     }
 
-    public sealed class CameraControl : MonoBehaviour
+    public sealed class CameraControl : MonoBehaviour, IStreamingFrameSource
     {
         public float Speed = 20f;
         public float ShiftMultiplier = 2f;
@@ -40,6 +41,31 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public Camera Camera => GetComponent<Camera>();
         public float LodFactor => 2f;
+        public bool IsAvailable => Camera != null;
+
+        public bool TryCreateFrame(double renderTime, out StreamingFrame frame)
+        {
+            var unityCamera = Camera;
+            if (unityCamera == null)
+            {
+                frame = default;
+                return false;
+            }
+
+            renderTime = UpdateCamera(renderTime);
+            frame = new StreamingFrame(
+                unityCamera.transform.worldToLocalMatrix,
+                X,
+                Y,
+                Z,
+                unityCamera.fieldOfView,
+                unityCamera.aspect,
+                unityCamera.nearClipPlane,
+                unityCamera.farClipPlane,
+                LodFactor,
+                renderTime);
+            return true;
+        }
 
         public Vec3D GlobalPosition
         {
