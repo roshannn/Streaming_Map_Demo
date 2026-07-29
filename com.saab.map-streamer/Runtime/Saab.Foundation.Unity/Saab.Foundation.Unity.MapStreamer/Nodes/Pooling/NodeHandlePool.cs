@@ -63,6 +63,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
             {
                 var handle = pool.Pop();
                 handle.node = node;
+                handle.allocationVersion = handle.version;
                 handle.gameObject.SetActive(true);
 #if UNITY_EDITOR
                 handle.gameObject.hideFlags = HideFlags.None;
@@ -72,6 +73,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
 
             var allocated = UnityEngine.Object.Instantiate(_prefabs[(byte)feature]);
             allocated.node = node;
+            allocated.allocationVersion = allocated.version;
             allocated.gameObject.SetActive(true);
             return allocated;
         }
@@ -171,9 +173,23 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
                 return;
             }
 
+            var gameObject = handle.gameObject;
+            if (handle.node is Geometry)
+            {
+                if (handle.featureKey == PoolObjectFeature.Terrain)
+                {
+                    _events.NotifyTerrainRemoved(
+                        gameObject,
+                        handle.allocationVersion);
+                }
+                else if (handle.featureKey == PoolObjectFeature.StaticMesh)
+                {
+                    _events.NotifyGeometryRemoved(gameObject);
+                }
+            }
+
             _free[(byte)handle.featureKey].Push(handle);
 
-            var gameObject = handle.gameObject;
             var objectTransform = gameObject.transform;
             objectTransform.localPosition = Vector3.zero;
             objectTransform.localRotation = Quaternion.identity;
@@ -184,14 +200,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
                 var sharedNode =
                     handle.stateFlags.HasFlag(NodeStateFlags.AssetInstance);
                 handle.poolPolicy.Reset(gameObject, sharedNode);
-            }
-
-            if (handle.node is Geometry)
-            {
-                if (handle.featureKey == PoolObjectFeature.Terrain)
-                    _events.NotifyTerrainRemoved(gameObject);
-                else if (handle.featureKey == PoolObjectFeature.StaticMesh)
-                    _events.NotifyGeometryRemoved(gameObject);
             }
 
             handle.Recycle(_textures);

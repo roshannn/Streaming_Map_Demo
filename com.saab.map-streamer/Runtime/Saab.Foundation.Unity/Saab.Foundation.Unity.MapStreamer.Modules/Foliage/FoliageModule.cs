@@ -116,7 +116,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         private RenderTexture _depthMap;
         private bool _hasDepthTexture = false;
 
-        private Queue<FoliageJob> _futurePool = new Queue<FoliageJob>();
         private Dictionary<SettingsFeatureType, SettingsFeature> _settingsCache = new Dictionary<SettingsFeatureType, SettingsFeature>();
         private GraphicsBuffer _vertexBuffer;
         private GraphicsBuffer _indexBuffer;
@@ -384,12 +383,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        struct FoliageJob
-        {
-            public GameObject gameObject { get; set; }
-            public int FrameCount { get; set; }
-        }
-
         public void OnTerrainAdded(in TerrainModuleContext context)
         {
             if (!_initialized || context.IsAsset)
@@ -513,7 +506,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             _hasDepthTexture = false;
             _mappingTable = null;
             _maxHeight = 0;
-            _futurePool.Clear();
             _settingsCache.Clear();
         }
 

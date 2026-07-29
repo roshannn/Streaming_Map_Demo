@@ -14,7 +14,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Events
         public event Action<GameObject, bool> LoaderCreated;
         public event Action<GameObject> EnteredPool;
         public event Action<GameObject> GeometryRemoved;
-        public event Action<GameObject> TerrainRemoved;
+        public event Action<GameObject, byte> TerrainRemoved;
 
         public void NotifyTerrainCreated(GameObject gameObject, bool isAsset) =>
             TerrainCreated?.Invoke(gameObject, isAsset);
@@ -30,7 +30,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal.Events
             EnteredPool?.Invoke(gameObject);
         public void NotifyGeometryRemoved(GameObject gameObject) =>
             GeometryRemoved?.Invoke(gameObject);
-        public void NotifyTerrainRemoved(GameObject gameObject) =>
-            TerrainRemoved?.Invoke(gameObject);
+        public void NotifyTerrainRemoved(
+            GameObject gameObject,
+            byte nodeVersion) =>
+            TerrainRemoved?.Invoke(gameObject, nodeVersion);
     }
 }

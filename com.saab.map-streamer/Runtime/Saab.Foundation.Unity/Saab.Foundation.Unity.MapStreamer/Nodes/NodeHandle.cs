@@ -116,6 +116,10 @@ namespace Saab.Foundation.Unity.MapStreamer
         [NonSerialized]
         internal byte version;
 
+        // version captured when this pooled handle was assigned its current node
+        [NonSerialized]
+        internal byte allocationVersion;
+
         // state-data (for now only single texture)
         [NonSerialized]
         public Texture2D texture;

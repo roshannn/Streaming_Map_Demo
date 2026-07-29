@@ -39,7 +39,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             var identity = new TerrainModuleIdentity(
                 gameObject.GetInstanceID(),
-                nodeHandle.version);
+                nodeHandle.allocationVersion);
 
             context = new TerrainModuleContext(
                 identity,

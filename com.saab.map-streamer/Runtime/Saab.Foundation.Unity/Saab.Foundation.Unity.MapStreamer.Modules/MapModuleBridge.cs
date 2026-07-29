@@ -146,7 +146,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        private void OnTerrainRemoved(GameObject gameObject)
+        private void OnTerrainRemoved(
+            GameObject gameObject,
+            byte nodeVersion)
         {
             if (!IsInitialized)
                 return;
@@ -160,6 +162,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     StreamingLogLevel.Warning,
                     "Module terrain removal had no active registration " +
                     $"[object={gameObject?.GetInstanceID()}].");
+                return;
+            }
+
+            if (context.Identity.NodeVersion != nodeVersion)
+            {
+                ++InvalidContextCount;
+                _log.Write(
+                    StreamingLogLevel.Warning,
+                    "Stale module terrain removal ignored " +
+                    $"[expected={context.Identity}, " +
+                    $"actual={gameObject.GetInstanceID()}:{nodeVersion}].");
                 return;
             }
 
