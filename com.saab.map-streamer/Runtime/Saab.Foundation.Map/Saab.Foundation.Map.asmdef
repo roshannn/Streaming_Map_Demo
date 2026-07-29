@@ -1,0 +1,16 @@
+{
+    "name": "Saab.Foundation.Map",
+    "rootNamespace": "Saab.Foundation.Map",
+    "references": [
+        "MAPSTREAMER.Streaming.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
