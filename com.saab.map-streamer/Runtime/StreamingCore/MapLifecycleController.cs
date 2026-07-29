@@ -30,7 +30,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
         public event Action OnMapChanged;
         public event MapLoadErrorHandler OnMapLoadError;
 
-        public bool Load()
+        public bool LoadMap()
         {
             var mapUrl = _configuration.MapUrl;
             while (true)

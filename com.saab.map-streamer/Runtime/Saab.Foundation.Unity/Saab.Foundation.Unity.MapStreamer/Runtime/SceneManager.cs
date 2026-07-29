@@ -41,7 +41,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             _settings = settings;
         }
 
-        public bool Init(bool loadMap = true)
+        public bool Init()
         {
             if (_initialized)
                 return true;
@@ -49,7 +49,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return false;
 
             _initialized = true;
-            if (loadMap && !LoadMap())
+            if (!_mapLifecycle.LoadMap())
             {
                 Uninitialize();
                 return false;
@@ -68,15 +68,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             return true;
         }
 
-        public bool LoadMap()
-        {
-            return _mapLifecycle.Load();
-        }
-
-        public void ResetMap()
-        {
-            _mapLifecycle.Reset();
-        }
 
         public void Render()
         {
