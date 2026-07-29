@@ -7,19 +7,26 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoIntegration
 {
     internal sealed class GizmoSceneCallbacks : IGizmoSceneCallbacks
     {
+        private readonly IMapViewContext _viewContext;
+
+        public GizmoSceneCallbacks(IMapViewContext viewContext)
+        {
+            _viewContext = viewContext;
+        }
+
         public void AttachCamera(Camera camera)
         {
-            MapControl.SystemMap.Camera = camera;
+            _viewContext.Attach(camera);
         }
 
         public void DetachCamera()
         {
-            MapControl.SystemMap.Camera = null;
+            _viewContext.Detach();
         }
 
         public void SetLodFactor(float lodFactor)
         {
-            MapControl.SystemMap.LodFactor = lodFactor;
+            _viewContext.SetLodFactor(lodFactor);
         }
     }
 }

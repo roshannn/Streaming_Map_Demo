@@ -12,27 +12,28 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoIntegration
     {
         private readonly GizmoStreamingBackend _backend;
         private readonly SceneTraverser _traverser;
+        private readonly IMapSession _mapSession;
 
         public GizmoMapCallbacks(
             GizmoStreamingBackend backend,
-            SceneTraverser traverser)
+            SceneTraverser traverser,
+            IMapSession mapSession)
         {
             _backend = backend;
             _traverser = traverser;
+            _mapSession = mapSession;
         }
 
         public GameObject Install(string url, Node node)
         {
-            MapControl.SystemMap.NodeURL = url;
-            MapControl.SystemMap.CurrentMap = node;
             if (node == null)
                 return null;
 
-            var currentMap = MapControl.SystemMap.CurrentMap;
-            _backend.AddNode(currentMap);
+            var installedRoot = _mapSession.Install(url, node);
+            _backend.AddNode(installedRoot);
 
             var root = new GameObject("root");
-            var scene = _traverser.Begin(currentMap);
+            var scene = _traverser.Begin(installedRoot);
             if (scene != null)
                 scene.transform.SetParent(root.transform, false);
 
