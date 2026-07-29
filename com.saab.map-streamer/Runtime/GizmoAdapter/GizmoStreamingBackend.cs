@@ -39,12 +39,13 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoAdapter
         {
             if (IsInitialized)
                 return true;
-            if (!GizmoSdkRuntime.Initialize())
+            if (!GizmoSdkRuntime.IsInitialized &&
+                !GizmoSdkRuntime.EnsureInitialized())
                 return false;
 
+            _streamingLock.AcquireEdit();
             try
             {
-                _streamingLock.AcquireEdit();
                 try
                 {
                     _camera = new PerspCamera("MapStreamer")
@@ -63,15 +64,10 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoAdapter
                     DisposeNativeResources();
                     throw;
                 }
-                finally
-                {
-                    _streamingLock.Release();
-                }
             }
-            catch
+            finally
             {
-                GizmoSdkRuntime.Shutdown();
-                throw;
+                _streamingLock.Release();
             }
         }
 
@@ -124,24 +120,17 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoAdapter
 
         public void Shutdown()
         {
-            if (!IsInitialized)
+            if (!HasNativeResources)
                 return;
 
+            _streamingLock.AcquireEdit();
             try
             {
-                _streamingLock.AcquireEdit();
-                try
-                {
-                    DisposeNativeResources();
-                }
-                finally
-                {
-                    _streamingLock.Release();
-                }
+                DisposeNativeResources();
             }
             finally
             {
-                GizmoSdkRuntime.Shutdown();
+                _streamingLock.Release();
             }
         }
 
@@ -149,17 +138,52 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoAdapter
 
         private void DisposeNativeResources()
         {
-            _callbacks.DetachCamera();
-            _traverseAction?.Dispose();
-            _camera?.Dispose();
-            _context?.Dispose();
-            _scene?.Dispose();
-
-            _traverseAction = null;
-            _camera = null;
-            _context = null;
-            _scene = null;
+            try
+            {
+                _callbacks.DetachCamera();
+            }
+            finally
+            {
+                try
+                {
+                    _traverseAction?.Dispose();
+                }
+                finally
+                {
+                    try
+                    {
+                        _camera?.Dispose();
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            _context?.Dispose();
+                        }
+                        finally
+                        {
+                            try
+                            {
+                                _scene?.Dispose();
+                            }
+                            finally
+                            {
+                                _traverseAction = null;
+                                _camera = null;
+                                _context = null;
+                                _scene = null;
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        private bool HasNativeResources =>
+            _scene != null ||
+            _camera != null ||
+            _context != null ||
+            _traverseAction != null;
 
         private static Matrix4 ToZFlippedMatrix(UnityEngine.Matrix4x4 matrix)
         {
