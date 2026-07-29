@@ -18,8 +18,6 @@ using System.Collections.Generic;
 using System;
 using GizmoSDK.GizmoBase;
 
-using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
-using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
 using System.Runtime.InteropServices;
 using Saab.Unity.Extensions;
 using Saab.Foundation.Map;
@@ -394,12 +392,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             //DebugUtils.BufferToRenderTexture(_angleDepth, dimensions, _fov);
         }
 
-        private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "Foliage-Cull");
-
         public ComputeBuffer Cull(Vector4[] frustum, Camera camera, float maxHeight, RenderTexture Depth, FeatureSet set)
         {
-            _profilerMarker.Begin();
-
             _pointCloud.SetCounterValue(0);     // only once every frame
 
             Matrix4x4 world2Screen = camera.projectionMatrix * camera.worldToCameraMatrix;
@@ -455,8 +449,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
 
             PostCull();
-
-            _profilerMarker.End();
 
             return _pointCloud;
         }

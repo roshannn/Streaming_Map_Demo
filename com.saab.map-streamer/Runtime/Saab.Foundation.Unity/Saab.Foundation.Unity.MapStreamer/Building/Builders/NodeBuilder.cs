@@ -52,7 +52,7 @@ namespace Saab.Foundation.Unity.MapStreamer
          BuildPriority Priority { get; }
 
         /// <summary>
-        /// Invoked by the SceneManager to determine if the provided node together with additional info
+        /// Invoked by the map streaming host to determine if the provided node together with additional info
         /// is a valid build target for this builder
         /// </summary>
         /// <param name="node">Node</param>

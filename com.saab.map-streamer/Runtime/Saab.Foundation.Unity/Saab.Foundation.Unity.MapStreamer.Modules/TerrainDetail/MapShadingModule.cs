@@ -19,9 +19,6 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 using Saab.Foundation.Unity.MapStreamer.Utils;
-using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
-using VContainer;
-
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
     public struct TerrainData : IDisposable
@@ -72,9 +69,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         }
     }
 
-    public class MapShadingModule : MonoBehaviour
+    public class MapShadingModule :
+        MonoBehaviour,
+        IMapModule,
+        ITerrainAddedHandler
     {
-        private NodeEvents _nodeEvents;
+        private bool _initialized;
 
         public bool EnableDetailedTextures
         {
@@ -127,19 +127,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private readonly Dictionary<GameObject, TerrainData> _terrainData = new Dictionary<GameObject, TerrainData>();
 
-        [Inject]
-        private void Construct(NodeEvents nodeEvents)
-        {
-            _nodeEvents = nodeEvents;
-        }
-
-        private void Awake()
-        {
-            _enableDetailedTextures = GfxCaps.CurrentCaps.HasFlag(Capability.UseTerrainDetailTextures);
-            InitializeModule();
-            RefreshSettings();
-        }
-
         private static class MaterialParameterID
         {
             public static readonly int NormalBuffer = Shader.PropertyToID("_NormalBuffer");
@@ -150,25 +137,50 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
-            if (_nodeEvents != null)
-                _nodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
-
-            if (_mappingBuffer != null)
-                _mappingBuffer.Release();
+            Shutdown();
         }
 
-        public void InitializeModule()
+        public void Initialize()
         {
-            if (_nodeEvents && _enableDetailedTextures)
+            if (_initialized)
+                return;
+
+            try
             {
-                InitMapModules();
+                _enableDetailedTextures =
+                    GfxCaps.CurrentCaps.HasFlag(
+                        Capability.UseTerrainDetailTextures);
                 InitDetailTexturing();
+                RefreshSettings();
+                _initialized = true;
+            }
+            catch
+            {
+                _initialized = true;
+                Shutdown();
+                throw;
             }
         }
 
-        private void InitMapModules()
+        public void Shutdown()
         {
-            _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
+            if (!_initialized)
+                return;
+
+            _initialized = false;
+            foreach (var terrain in _terrainData.Values)
+                terrain.Dispose();
+            _terrainData.Clear();
+
+            _mappingBuffer?.Release();
+            _mappingBuffer = null;
+
+            if (_textureArray)
+                Destroy(_textureArray);
+            if (_normalMapArray)
+                Destroy(_normalMapArray);
+            _textureArray = null;
+            _normalMapArray = null;
         }
 
         private void InitDetailTexturing()
@@ -225,25 +237,27 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        private void NodeEvents_OnTerrainCreated(GameObject go, bool isAsset)
+        public void OnTerrainAdded(in TerrainModuleContext context)
         {
-            if (!go.TryGetComponent<NodeHandle>(out var nodehandle))
+            if (!_initialized || !_enableDetailedTextures)
                 return;
 
-            if (!nodehandle.feature || !nodehandle.texture)
+            if (!context.FeatureTexture || !context.Texture)
                 return;
 
-            if (!go.TryGetComponent<MeshRenderer>(out var meshRenderer))
+            var material = context.Renderer.sharedMaterial;
+            if (!material)
                 return;
 
-            var material = meshRenderer.sharedMaterial;
-
-            material.SetTexture(MaterialParameterID.Textures, _textureArray);
-            material.SetTexture(MaterialParameterID.NormalMaps, _normalMapArray);
-
+            material.SetTexture(
+                MaterialParameterID.Textures,
+                _textureArray);
+            material.SetTexture(
+                MaterialParameterID.NormalMaps,
+                _normalMapArray);
             material.SetBuffer("_MappingBuffer", _mappingBuffer);
 
-            //TODO: Use TerrainMapping to find internal ID for water.
+            // TODO: Use TerrainMapping to find the internal water ID.
             material.SetInt("_WaterIndex", 60);
         }
 

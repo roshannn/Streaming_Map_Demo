@@ -146,6 +146,20 @@ namespace Saab.Foundation.Unity.MapStreamer.GizmoAdapter
                 ? null
                 : _callbacks.FindLoaderAnchor(_loader.GetNativeReference());
 
+        public bool TryFindGameObjects(
+            out IReadOnlyList<GameObject> gameObjects)
+        {
+            if (_loader == null)
+            {
+                gameObjects = Array.Empty<GameObject>();
+                return false;
+            }
+
+            return _callbacks.TryFindGameObjects(
+                _loader.GetNativeReference(),
+                out gameObjects);
+        }
+
         public void Dispose()
         {
             _loader?.ReleaseNoDelete();

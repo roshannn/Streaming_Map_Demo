@@ -10,9 +10,6 @@ using Saab.Foundation.Unity.MapStreamer.Streaming;
 using UnityEngine;
 using unTransform = UnityEngine.Transform;
 
-using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
-using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
-
 namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
 {
     internal sealed class NodeHandlePool : INodePoolMaintenance
@@ -27,9 +24,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
             new Queue<byte>();
         private readonly TextureManager _textures;
         private readonly NodeEvents _events;
-        private readonly ProfilerMarker _freeMarker =
-            new ProfilerMarker(ProfilerCategory.Render, "NodePool-Free");
-
         public NodeHandlePool(TextureManager textures, NodeEvents events)
         {
             _textures = textures;
@@ -94,7 +88,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
 
         public void ProcessPending(int count)
         {
-            _freeMarker.Begin();
             while (_pendingFrees.Count > 0 && count-- > 0)
             {
                 var transform = _pendingFrees.Pop();
@@ -104,7 +97,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
 
                 Recycle(transform);
             }
-            _freeMarker.End();
         }
 
         public void PreAllocate(int count, TimeSpan timeBudget)

@@ -11,7 +11,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Composition.Streaming
     {
         public void Install(IContainerBuilder builder)
         {
-            builder.RegisterComponentInHierarchy<SceneManager>()
+            builder.RegisterComponentInHierarchy<MapStreamingHost>()
                 .AsSelf();
             builder.RegisterComponentInHierarchy<CameraControl>()
                 .AsSelf()

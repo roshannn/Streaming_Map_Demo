@@ -9,18 +9,11 @@ using UnityEngine;
 
 using VContainer;
 
-using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
-using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
-
 namespace Saab.Foundation.Unity.MapStreamer
 {
     [RequireComponent(typeof(NodeEvents))]
-    [RequireComponent(typeof(MapStreamerLifetimeScope))]
-    public sealed class SceneManager : MonoBehaviour
+    public sealed class MapStreamingHost : MonoBehaviour
     {
-        private static readonly ProfilerMarker ProfilerMarkerRender =
-            new ProfilerMarker(ProfilerCategory.Render, "SM-Render");
-
         private MapLifecycleController _mapLifecycle;
         private StreamingRuntimeController _runtime;
         private StreamingPipeline _streamingPipeline;
@@ -76,10 +69,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (!_initialized)
                 return;
 
-            using (ProfilerMarkerRender.Auto())
-            {
-                _streamingPipeline.ProcessFrame();
-            }
+            _streamingPipeline.ProcessFrame();
         }
 
         private void Start()

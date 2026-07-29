@@ -9,11 +9,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
         private readonly IStreamingBackend _backend;
         private readonly IExternalAssetRuntime _externalAssets;
         private readonly IMapRuntime _map;
+        private readonly IMapModuleRuntime _modules;
 
         private bool _backendInitialized;
         private bool _dynamicLoadsSubscribed;
         private bool _dynamicLoaderStarted;
         private bool _externalAssetsProcessing;
+        private bool _modulesInitialized;
         private bool _runtimeStarted;
 
         public StreamingRuntimeController(
@@ -23,7 +25,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             IDynamicLoaderRuntime dynamicLoaderRuntime,
             IStreamingBackend backend,
             IExternalAssetRuntime externalAssets,
-            IMapRuntime map)
+            IMapRuntime map,
+            IMapModuleRuntime modules)
         {
             _builders = builders;
             _options = options;
@@ -32,6 +35,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             _backend = backend;
             _externalAssets = externalAssets;
             _map = map;
+            _modules = modules;
         }
 
         public bool IsInitialized { get; private set; }
@@ -49,6 +53,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
                 _builders.Initialize();
                 if (!_builders.SupportsInstancing)
                     _options.DisableInstancing();
+
+                _modules.Initialize();
+                _modulesInitialized = true;
 
                 _dynamicLoads.Subscribe();
                 _dynamicLoadsSubscribed = true;
@@ -105,10 +112,21 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
                         _dynamicLoaderStarted = false;
                     }
 
-                    if (_runtimeStarted)
+                    try
                     {
-                        _runtimeStarted = false;
-                        _map.Reset();
+                        if (_runtimeStarted)
+                        {
+                            _runtimeStarted = false;
+                            _map.Reset();
+                        }
+                    }
+                    finally
+                    {
+                        if (_modulesInitialized)
+                        {
+                            _modulesInitialized = false;
+                            _modules.Shutdown();
+                        }
                     }
                 }
                 finally

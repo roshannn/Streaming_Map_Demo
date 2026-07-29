@@ -39,6 +39,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
     {
         long Identity { get; }
         Transform FindAnchor();
+        bool TryFindGameObjects(
+            out IReadOnlyList<GameObject> gameObjects);
     }
 
     public readonly struct DynamicLoadEvent
@@ -104,6 +106,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
         bool IsInitialized { get; }
     }
 
+    public interface IMapModuleRuntime
+    {
+        bool IsInitialized { get; }
+        void Initialize();
+        void Shutdown();
+    }
+
     public interface IStreamingClock
     {
         double SystemSeconds { get; }
@@ -152,9 +161,23 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
         void UpdateNodes();
     }
 
-    public interface IPostTraversal
+    public readonly struct StreamingFrameCompletionContext
     {
-        void OnPostTraverse();
+        public StreamingFrameCompletionContext(
+            double renderTime,
+            TimeSpan elapsed)
+        {
+            RenderTime = renderTime;
+            Elapsed = elapsed;
+        }
+
+        public double RenderTime { get; }
+        public TimeSpan Elapsed { get; }
+    }
+
+    public interface IStreamingFrameCompletionSink
+    {
+        void OnFrameCompleted(in StreamingFrameCompletionContext context);
     }
 
     public interface IStreamingBudget

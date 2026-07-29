@@ -18,7 +18,6 @@ using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.Runtime;
 using Saab.Foundation.Unity.MapStreamer.Streaming;
-using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Utility.GfxCaps;
 using System;
 using System.Collections;
@@ -28,9 +27,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 using VContainer;
-
-using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
-using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
@@ -59,6 +55,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         public FoliageFeature FoliageFeature;
         public ComputeBuffer InderectBuffer;
         public ComputeBuffer FoliageData;
+        public Texture2DArray MainTextureArray;
 
         public float MaxHeight { get; set; }
 
@@ -69,14 +66,29 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             FoliageFeature?.Dispose();
             InderectBuffer?.Dispose();
             FoliageData?.Dispose();
+            if (FoliageMaterial)
+                UnityEngine.Object.Destroy(FoliageMaterial);
+            if (MainTextureArray)
+                UnityEngine.Object.Destroy(MainTextureArray);
+
+            FoliageFeature = null;
+            InderectBuffer = null;
+            FoliageData = null;
+            FoliageMaterial = null;
+            MainTextureArray = null;
         }
     }
 
-    public class FoliageModule : MonoBehaviour, IPostTraversal
+    public class FoliageModule :
+        MonoBehaviour,
+        IMapModule,
+        ITerrainAddedHandler,
+        ITerrainRemovedHandler,
+        IStreamingFrameCompletedHandler
     {
         private CameraControl _cameraControl;
-        private NodeEvents _nodeEvents;
         private IMapCoordinates _mapCoordinates;
+        private bool _initialized;
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
 
@@ -164,60 +176,81 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         [Inject]
         private void Construct(
             CameraControl cameraControl,
-            NodeEvents nodeEvents,
             IMapCoordinates mapCoordinates)
         {
             _cameraControl = cameraControl;
-            _nodeEvents = nodeEvents;
             _mapCoordinates = mapCoordinates;
         }
 
-        // Start is called before the first frame update
-        void Start()
+        public void Initialize()
         {
-            _mappingTable = TerrainMapping.MapFeatureData();
+            if (_initialized)
+                return;
 
-            StartCoroutine(WaitForDepth());
-
-            _nodeEvents.TerrainCreated += NodeEvents_OnTerrainCreated;
-            _nodeEvents.TerrainRemoved += NodeEvents_OnTerrainRemoved;
-
-            for (int i = 0; i < Features.Count; i++)
+            try
             {
-                var featureSet = Features[i];
-                var settings = GetSettings(featureSet.SettingsType);
-                featureSet.Enabled = settings.Enabled;
+                _mappingTable = TerrainMapping.MapFeatureData();
 
-                featureSet.FoliageFeature = new FoliageFeature(
-                    Mathf.CeilToInt(featureSet.BufferSize * settings.Density),
-                    featureSet.Density * settings.Density,
-                    TerrainMapping.FeatureTruthTable(
-                        _mappingTable,
-                        featureSet.mapFeature),
-                    ComputeShader,
-                    _mapCoordinates);
+                StartCoroutine(WaitForDepth());
 
-                var inderectBuffer = new ComputeBuffer(4, sizeof(uint), ComputeBufferType.IndirectArguments);
-                inderectBuffer.SetData(new uint[] { 0, 1, 0, 0 });
-                featureSet.InderectBuffer = inderectBuffer;
-                featureSet.FoliageMaterial = new Material(FoliageShader);
-
-                //TODO: use to create a random noise
-                featureSet.FoliageMaterial.SetTexture(PlacementParameterID.PerlinNoise, PerlinNoise);
-
-                if (featureSet.Crossboard)
+                for (int i = 0; i < Features.Count; i++)
                 {
-                    featureSet.FoliageMaterial.SetFloat(PlacementParameterID.IsToggled, 0);
-                    featureSet.FoliageMaterial.EnableKeyword(PlacementParameterID.CROSSBOARD_ON);
-                }
-                else
-                {
-                    featureSet.FoliageMaterial.SetFloat(PlacementParameterID.IsToggled, 1);
-                    featureSet.FoliageMaterial.DisableKeyword(PlacementParameterID.CROSSBOARD_ON);
-                }
-                featureSet.MaxHeight = featureSet.FoliageSet.GetMaxHeight;
+                    var featureSet = Features[i];
+                    var settings = GetSettings(featureSet.SettingsType);
+                    featureSet.Enabled = settings.Enabled;
 
-                SetupFoliage(featureSet);
+                    featureSet.FoliageFeature = new FoliageFeature(
+                        Mathf.CeilToInt(
+                            featureSet.BufferSize * settings.Density),
+                        featureSet.Density * settings.Density,
+                        TerrainMapping.FeatureTruthTable(
+                            _mappingTable,
+                            featureSet.mapFeature),
+                        ComputeShader,
+                        _mapCoordinates);
+
+                    var indirectBuffer = new ComputeBuffer(
+                        4,
+                        sizeof(uint),
+                        ComputeBufferType.IndirectArguments);
+                    indirectBuffer.SetData(new uint[] { 0, 1, 0, 0 });
+                    featureSet.InderectBuffer = indirectBuffer;
+                    featureSet.FoliageMaterial =
+                        new Material(FoliageShader);
+
+                    featureSet.FoliageMaterial.SetTexture(
+                        PlacementParameterID.PerlinNoise,
+                        PerlinNoise);
+
+                    if (featureSet.Crossboard)
+                    {
+                        featureSet.FoliageMaterial.SetFloat(
+                            PlacementParameterID.IsToggled,
+                            0);
+                        featureSet.FoliageMaterial.EnableKeyword(
+                            PlacementParameterID.CROSSBOARD_ON);
+                    }
+                    else
+                    {
+                        featureSet.FoliageMaterial.SetFloat(
+                            PlacementParameterID.IsToggled,
+                            1);
+                        featureSet.FoliageMaterial.DisableKeyword(
+                            PlacementParameterID.CROSSBOARD_ON);
+                    }
+
+                    featureSet.MaxHeight =
+                        featureSet.FoliageSet.GetMaxHeight;
+                    SetupFoliage(featureSet);
+                }
+
+                _initialized = true;
+            }
+            catch
+            {
+                _initialized = true;
+                Shutdown();
+                throw;
             }
         }
 
@@ -248,6 +281,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 #endif           
             var foliageTypes = featureSet.FoliageSet.GetFoliageList;
             var mainTexs = Create2DArray(foliageTypes, format);
+            featureSet.MainTextureArray = mainTexs;
 
             featureSet.FoliageMaterial.SetInt(PlacementParameterID.FoliageCount, foliageTypes.Count);
             featureSet.FoliageMaterial.SetTexture(PlacementParameterID.MainTexArray, mainTexs);
@@ -342,11 +376,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 _frustum[i].w = _frustrumPlanes[i].distance;
             }
         }
-        private void NodeEvents_OnTerrainRemoved(GameObject go)
+        public void OnTerrainRemoved(in TerrainRemovalContext context)
         {
             foreach (var set in Features)
             {
-                set.FoliageFeature?.RemoveFoliage(go);
+                set.FoliageFeature?.RemoveFoliage(context.GameObject);
             }
         }
 
@@ -356,32 +390,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public int FrameCount { get; set; }
         }
 
-        private void NodeEvents_OnTerrainCreated(GameObject go, bool isAsset)
+        public void OnTerrainAdded(in TerrainModuleContext context)
         {
-            if (isAsset)
+            if (!_initialized || context.IsAsset)
                 return;
 
-            AddJob(go);
+            AddJob(in context);
         }
 
         private readonly Coordinate _coordConverter = new Coordinate();
 
-        private void AddJob(GameObject go)
+        private void AddJob(in TerrainModuleContext context)
         {
+            var go = context.GameObject;
             if (Disabled || !go.activeInHierarchy)
                 return;
 
-            if (!go.TryGetComponent<MeshFilter>(out var meshFilter))
-                return;
-
-            var mesh = meshFilter.sharedMesh;
+            var mesh = context.Mesh;
             if (!mesh)
                 return;
 
-            if (!go.TryGetComponent<NodeHandle>(out var nodeHandle))
-                return;
-
-            if (!nodeHandle.texture || !nodeHandle.feature)
+            var nodeHandle = context.NodeHandle;
+            if (!context.Texture || !context.FeatureTexture)
                 return;
 
             var featureInfo = nodeHandle.featureInfo;
@@ -452,14 +482,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        private void OnDestroy()
+        public void Shutdown()
         {
-            if (_nodeEvents != null)
-            {
-                _nodeEvents.TerrainCreated -= NodeEvents_OnTerrainCreated;
-                _nodeEvents.TerrainRemoved -= NodeEvents_OnTerrainRemoved;
-            }
+            if (!_initialized)
+                return;
 
+            _initialized = false;
+            StopAllCoroutines();
             foreach (var set in Features)
             {
                 set?.Dispose();
@@ -474,6 +503,23 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             _indexBuffer?.Release();
             _vertexBuffer?.Release();
             _indexbufferGpuCopy?.Release();
+
+            _surfaceheightMap = null;
+            _depthMap = null;
+            _pixelToWorld = null;
+            _indexBuffer = null;
+            _vertexBuffer = null;
+            _indexbufferGpuCopy = null;
+            _hasDepthTexture = false;
+            _mappingTable = null;
+            _maxHeight = 0;
+            _futurePool.Clear();
+            _settingsCache.Clear();
+        }
+
+        private void OnDestroy()
+        {
+            Shutdown();
         }
 
         private RenderTexture GenerateSurfaceHeight(UnityEngine.Texture texture)
@@ -647,18 +693,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             return desiredDistance;
         }
 
-        private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "Foliage-Render");
-
-        public void OnPostTraverse()
+        public void OnStreamingFrameCompleted(
+            in StreamingFrameModuleContext context)
         {
-            if (!isActiveAndEnabled)
+            if (!_initialized || !isActiveAndEnabled)
                 return;
 
-            _profilerMarker.Begin();
-
             Render();
-
-            _profilerMarker.End();
         }
 
         private void Render()

@@ -44,9 +44,6 @@ using UnityEngine;
 using GizmoSDK.Gizmo3D;
 using GizmoSDK.GizmoBase;
 
-using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
-using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
-
 namespace Saab.Foundation.Unity.MapStreamer
 {
     public static class GeometryHelper
@@ -58,16 +55,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         [ThreadStatic] private static Color[] _colors;
         [ThreadStatic] private static Vector2[] _texCoords;
 
-        private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-BuildGeometry");
-
         public static bool Build(Geometry geom, out Mesh output, out Color uniformColor)
         {
-            _profilerMarker.Begin();
-            
-            var res = BuildInternal(geom, out output, out uniformColor);
-            
-            _profilerMarker.End();
-            return res;
+            return BuildInternal(geom, out output, out uniformColor);
         }
 
         private static bool CopyPositionAndIndices(Geometry geom, Mesh mesh)

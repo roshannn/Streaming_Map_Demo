@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Saab.Foundation.Unity.MapStreamer.Streaming
@@ -18,7 +17,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
         private readonly IStreamingBackend _backend;
         private readonly IStreamingLog _log;
         private readonly IStreamingBudget _budget;
-        private readonly IEnumerable<IPostTraversal> _postTraversal;
+        private readonly IStreamingFrameCompletionSink _frameCompletion;
         private readonly Stopwatch _frameTimer = new Stopwatch();
 
         private bool _ownsLock;
@@ -34,7 +33,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             IStreamingBackend backend,
             IStreamingLog log,
             IStreamingBudget budget,
-            IEnumerable<IPostTraversal> postTraversal)
+            IStreamingFrameCompletionSink frameCompletion)
         {
             _streamingLock = streamingLock;
             _dynamicLoads = dynamicLoads;
@@ -46,7 +45,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             _backend = backend;
             _log = log;
             _budget = budget;
-            _postTraversal = postTraversal;
+            _frameCompletion = frameCompletion;
         }
 
         public event Action<bool> PreTraverse;
@@ -102,7 +101,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
                     return traversed;
 
                 ProcessTraversalResults();
-                CompleteFrame();
+                CompleteFrame(frame.RenderTime);
                 return traversed;
             }
             catch (Exception exception)
@@ -200,15 +199,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             _builds.Process(remaining);
         }
 
-        private void CompleteFrame()
+        private void CompleteFrame(double renderTime)
         {
             EnsureState(StreamingPipelineState.PostProcessing);
             ReleaseLockIfOwned();
             State = StreamingPipelineState.Unlocked;
+
             _nodeUpdates.UpdateNodes();
 
-            foreach (var handler in _postTraversal)
-                handler.OnPostTraverse();
+            var completion = new StreamingFrameCompletionContext(
+                renderTime,
+                _frameTimer.Elapsed);
+            _frameCompletion.OnFrameCompleted(in completion);
         }
 
         private void AbortFrame(

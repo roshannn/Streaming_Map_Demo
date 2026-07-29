@@ -47,9 +47,6 @@ using GizmoSDK.Gizmo3D;
 
 using gzTexture = GizmoSDK.Gizmo3D.Texture;
 using Texture = UnityEngine.Texture;
-using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
-using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
-
 namespace Saab.Foundation.Unity.MapStreamer
 {
     public struct StateBuildOutput
@@ -72,8 +69,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
     public static class StateHelper
     {
-        private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-ReadTexture");
-
         private static readonly Dictionary<TextureFormat, bool> _supportedFormats = new Dictionary<TextureFormat, bool>();
 
         public static bool Build(State state, out StateBuildOutput output, TextureManager textureCache = null)
@@ -170,13 +165,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private static bool ReadTextureFromState(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)
         {
-            _profilerMarker.Begin();
-
-            var res = ReadTextureFromStateInternal(state, out result, textureCache, unit, useMipMap);
-
-            _profilerMarker.End();
-
-            return res;
+            return ReadTextureFromStateInternal(
+                state,
+                out result,
+                textureCache,
+                unit,
+                useMipMap);
         }
 
         private static bool ReadTextureFromStateInternal(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)

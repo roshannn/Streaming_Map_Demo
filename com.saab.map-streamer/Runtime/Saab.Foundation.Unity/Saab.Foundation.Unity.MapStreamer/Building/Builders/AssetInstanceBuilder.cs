@@ -43,7 +43,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Building.Builders
 {
     /// <summary>
     /// Internal builder used for RefNode (shared assets), during asset traversal geometry nodes are registered
-    /// as prefabs using AddAssetPrefab() and SceneManager will use the AssetInstanceBuilder when traversing RefNode
+    /// as prefabs using AddAssetPrefab() and the map streaming host will use the AssetInstanceBuilder when traversing RefNode
     /// scenegraphs, if the geometry node has been registered the mesh and material will be reused and the NodeHandle
     /// will be marked as shared.
     /// </summary>
@@ -82,7 +82,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Building.Builders
 
         public bool CanBuild(Node node, TraversalState traversalState, IntersectMaskValue intersectMask)
         {
-            // SceneManager will manually control when this builder runs
+            // The map streaming host will manually control when this builder runs
             throw new NotSupportedException();
         }
 

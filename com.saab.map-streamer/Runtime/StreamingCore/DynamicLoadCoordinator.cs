@@ -65,7 +65,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
                         if (gameObject != null)
                             gameObject.transform.SetParent(anchor, false);
                     }
-                    else if (pending.Node.TryFindGameObjects(out var gameObjects))
+                    else if (pending.Loader.TryFindGameObjects(
+                                 out var gameObjects))
                     {
                         foreach (var gameObject in gameObjects)
                             _hierarchy.ReleaseChildren(gameObject.transform);
