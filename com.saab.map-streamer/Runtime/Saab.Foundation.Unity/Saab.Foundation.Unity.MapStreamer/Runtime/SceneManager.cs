@@ -1,5 +1,6 @@
 using System;
 
+using Saab.Foundation.Unity.MapStreamer.GizmoAdapter;
 using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 using Saab.Foundation.Unity.MapStreamer.Runtime;
@@ -27,6 +28,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private bool _initialized;
         private bool _resumeOnEnable;
+        private IDisposable _applicationShutdownRegistration;
 
         [Inject]
         private void Construct(
@@ -87,18 +89,26 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void OnEnable()
         {
+            RegisterApplicationShutdown();
             ResumeIfNeeded();
         }
 
         private void OnDisable()
         {
             _resumeOnEnable = _initialized;
-            Uninitialize();
+            try
+            {
+                Uninitialize();
+            }
+            finally
+            {
+                UnregisterApplicationShutdown();
+            }
         }
 
-        private void OnApplicationQuit()
+        private void OnDestroy()
         {
-            Uninitialize();
+            UnregisterApplicationShutdown();
         }
 
         private void Update()
@@ -119,6 +129,22 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             _resumeOnEnable = false;
             Init();
+        }
+
+        private void RegisterApplicationShutdown()
+        {
+            if (_applicationShutdownRegistration != null)
+                return;
+
+            _applicationShutdownRegistration =
+                GizmoApplicationLifetime.RegisterShutdown(
+                    () => Uninitialize());
+        }
+
+        private void UnregisterApplicationShutdown()
+        {
+            _applicationShutdownRegistration?.Dispose();
+            _applicationShutdownRegistration = null;
         }
     }
 }
