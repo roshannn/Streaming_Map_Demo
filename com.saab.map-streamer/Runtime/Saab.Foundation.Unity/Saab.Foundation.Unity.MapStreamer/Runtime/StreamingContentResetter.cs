@@ -27,6 +27,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Runtime
         private readonly NodeBuildCoordinator _builds;
         private readonly INodeUpdateRegistry _nodeUpdates;
         private readonly IExternalAssetResetter _externalAssets;
+        private readonly IMapSession _mapSession;
 
         public StreamingContentResetter(
             IDynamicLoadPump dynamicNodeLoads,
@@ -40,7 +41,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Runtime
             SceneTraverser sceneTraverser,
             NodeBuildCoordinator builds,
             INodeUpdateRegistry nodeUpdates,
-            IExternalAssetResetter externalAssets)
+            IExternalAssetResetter externalAssets,
+            IMapSession mapSession)
         {
             _dynamicNodeLoads = dynamicNodeLoads;
             _builders = builders;
@@ -54,6 +56,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Runtime
             _builds = builds;
             _nodeUpdates = nodeUpdates;
             _externalAssets = externalAssets;
+            _mapSession = mapSession;
         }
 
         public void Reset(GameObject root)
@@ -76,7 +79,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Runtime
             _builds.Clear();
             _nodeUpdates.Clear();
             _externalAssets.Clear();
-            MapControl.SystemMap.Reset();
+            _mapSession.Reset();
         }
     }
 }
