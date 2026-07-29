@@ -7,6 +7,7 @@ using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Unity.Extensions;
 
 using UnityEngine;
+using VContainer;
 
 using Quaternion = UnityEngine.Quaternion;
 using Random = UnityEngine.Random;
@@ -38,9 +39,16 @@ namespace Saab.Foundation.Unity.MapStreamer
         private AutoMovement _autoMovement = default;
         private float _countDownJump = 4;
         private float _jumpTime = 4;
+        private IMapCoordinates _mapCoordinates;
+
+        [Inject]
+        private void Construct(IMapCoordinates mapCoordinates)
+        {
+            _mapCoordinates = mapCoordinates;
+        }
 
         public Camera Camera => GetComponent<Camera>();
-        public float LodFactor => 2f;
+        public float LodFactor => 1f;
         public bool IsAvailable => Camera != null;
 
         public bool TryCreateFrame(double renderTime, out StreamingFrame frame)
@@ -89,14 +97,14 @@ namespace Saab.Foundation.Unity.MapStreamer
         }
 
         public Vector3 Up =>
-            MapControl.SystemMap
-                .GetLocalOrientation(GlobalPosition)
+            _mapCoordinates
+                .GetEnuOrientation(GlobalPosition)
                 .GetCol(2)
                 .ToVector3();
 
         public Vector3 North =>
-            MapControl.SystemMap
-                .GetLocalOrientation(GlobalPosition)
+            _mapCoordinates
+                .GetEnuOrientation(GlobalPosition)
                 .GetCol(1)
                 .ToVector3();
 

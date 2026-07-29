@@ -76,6 +76,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
     {
         private CameraControl _cameraControl;
         private NodeEvents _nodeEvents;
+        private IMapCoordinates _mapCoordinates;
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
 
@@ -163,10 +164,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         [Inject]
         private void Construct(
             CameraControl cameraControl,
-            NodeEvents nodeEvents)
+            NodeEvents nodeEvents,
+            IMapCoordinates mapCoordinates)
         {
             _cameraControl = cameraControl;
             _nodeEvents = nodeEvents;
+            _mapCoordinates = mapCoordinates;
         }
 
         // Start is called before the first frame update
@@ -185,7 +188,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 var settings = GetSettings(featureSet.SettingsType);
                 featureSet.Enabled = settings.Enabled;
 
-                featureSet.FoliageFeature = new FoliageFeature(Mathf.CeilToInt(featureSet.BufferSize * settings.Density), featureSet.Density * settings.Density, TerrainMapping.FeatureTruthTable(_mappingTable, featureSet.mapFeature), ComputeShader);
+                featureSet.FoliageFeature = new FoliageFeature(
+                    Mathf.CeilToInt(featureSet.BufferSize * settings.Density),
+                    featureSet.Density * settings.Density,
+                    TerrainMapping.FeatureTruthTable(
+                        _mappingTable,
+                        featureSet.mapFeature),
+                    ComputeShader,
+                    _mapCoordinates);
 
                 var inderectBuffer = new ComputeBuffer(4, sizeof(uint), ComputeBufferType.IndirectArguments);
                 inderectBuffer.SetData(new uint[] { 0, 1, 0, 0 });
@@ -399,7 +409,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             var meshCenter = nodeHandle.node.BoundaryCenter;
 
-            MapControl.SystemMap.GlobalToWorld(meshCenter, out GizmoSDK.Coordinate.CartPos cartPos);
+            if (!_mapCoordinates.TryGlobalToWorld(
+                    meshCenter,
+                    out GizmoSDK.Coordinate.CartPos cartPos))
+                return;
 
             _coordConverter.SetCartPos(cartPos);
             _coordConverter.GetUTMPos(out var utmPos);

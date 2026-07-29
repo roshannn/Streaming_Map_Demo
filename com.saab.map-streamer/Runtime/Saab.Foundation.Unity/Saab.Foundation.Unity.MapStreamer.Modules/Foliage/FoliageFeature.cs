@@ -115,14 +115,21 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         private readonly int _kernelPostCull;
         private const float _depthBufferScale = 2.5f;
         private readonly int _foliageStride;
+        private readonly IMapCoordinates _mapCoordinates;
 
         public int FoliageCount
         {
             get { return _items.Count; }
         }
 
-        public FoliageFeature(int BufferSize, float density, int[] map, ComputeShader computeShader)
+        public FoliageFeature(
+            int BufferSize,
+            float density,
+            int[] map,
+            ComputeShader computeShader,
+            IMapCoordinates mapCoordinates)
         {
+            _mapCoordinates = mapCoordinates;
             _foliageStride = Marshal.SizeOf<FoliagePoint>();
 
             _placement = computeShader;
@@ -318,20 +325,47 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 return Matrix4x4.identity;
 
             var center = handle.node.BoundaryCenter;
-            MapControl.SystemMap.GlobalToWorld(center, out GizmoSDK.Coordinate.LatPos latPos);
+            if (!_mapCoordinates.TryGlobalToWorld(
+                    center,
+                    out GizmoSDK.Coordinate.LatPos latPos))
+                return Matrix4x4.identity;
 
             var matrix = Matrix4x4.Translate(-center.ToVector3());
-            var pos = new MapPos();
-            pos.SetLatPos(latPos.Latitude, latPos.Longitude, latPos.Altitude);
-            var enu = pos.EnuToLocal();
+            var enu = _mapCoordinates.GetEnuOrientation(latPos);
 
             var east = enu * new Vec3(1, 0, 0);
-            var north = enu * new Vec3(0, 1, 0);
             var up = enu * new Vec3(0, 0, 1);
+            east = Vec3.Orthogonal(east, up);
+            var north = up.Cross(east);
 
-            var eunBasis = MapUtil.FromBasis((east.ToVector3()), (up.ToVector3()), -(north.ToVector3()));
+            var eunBasis = FromBasis(
+                east.ToVector3(),
+                up.ToVector3(),
+                -north.ToVector3());
 
             return go.transform.localToWorldMatrix * eunBasis;
+        }
+
+        private static Matrix4x4 FromBasis(
+            Vector3 right,
+            Vector3 up,
+            Vector3 forward)
+        {
+            var matrix = Matrix4x4.identity;
+            matrix.SetColumn(
+                0,
+                new Vector4(right.x, right.y, right.z, 0f));
+            matrix.SetColumn(
+                1,
+                new Vector4(up.x, up.y, up.z, 0f));
+            matrix.SetColumn(
+                2,
+                new Vector4(
+                    forward.x,
+                    forward.y,
+                    forward.z,
+                    0f));
+            return matrix;
         }
 
         private void PreCull()
