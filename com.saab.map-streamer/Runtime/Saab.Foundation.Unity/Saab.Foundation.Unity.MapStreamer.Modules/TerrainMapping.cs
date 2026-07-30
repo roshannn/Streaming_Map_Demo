@@ -263,6 +263,23 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             return MapFeatureData(MapgzData);
         }
 
+        public static bool TryFindSourceLabel(
+            MapFeature feature,
+            out int label)
+        {
+            for (var candidate = 0; candidate < 256; candidate++)
+            {
+                if (MapgzData(candidate).HasFlag(feature))
+                {
+                    label = candidate;
+                    return true;
+                }
+            }
+
+            label = 0;
+            return false;
+        }
+
         public static int[] MapFeatureData(Func<int, MapFeature> Mapping)
         {
             int[] labels = new int[256];

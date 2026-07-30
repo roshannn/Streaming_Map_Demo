@@ -181,6 +181,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             data.TerrainPoints = new ComputeBuffer(size < 1 ? 1 : size, _foliageStride, ComputeBufferType.Append);
 
             FeaturePlacement(data);
+            // Placement consumes these synchronously. The module owns the
+            // shared inputs and releases them once after all feature sets.
+            data.PixelToObject = null;
+            data.surfaceHeight = null;
 
             _items.Add(data);
             _itemLookup.Add(go);

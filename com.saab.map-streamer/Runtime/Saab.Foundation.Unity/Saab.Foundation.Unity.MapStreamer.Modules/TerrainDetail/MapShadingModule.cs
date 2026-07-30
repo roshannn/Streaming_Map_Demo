@@ -69,6 +69,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         }
     }
 
+    [Obsolete(
+        "Use TerrainShadingModuleDefinition in a MapModuleProfile. " +
+        "This component remains as a compatibility facade.")]
     public class MapShadingModule :
         MonoBehaviour,
         IMapModule,

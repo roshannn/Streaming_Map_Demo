@@ -7,6 +7,13 @@
   "dependencies": {
     "jp.hadashikick.vcontainer": "1.19.0"
   },
+  "samples": [
+    {
+      "displayName": "Extensible Module",
+      "description": "A profile-driven module added without changing the dispatcher or composition root.",
+      "path": "Samples~/ExtensibleModule"
+    }
+  ],
   "author": {
     "name": "SAAB AB"
   }

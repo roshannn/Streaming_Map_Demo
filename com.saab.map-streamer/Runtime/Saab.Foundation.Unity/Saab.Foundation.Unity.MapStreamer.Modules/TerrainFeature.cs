@@ -85,6 +85,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         static public int terrainResolution = Shader.PropertyToID("terrainResolution");
     }
 
+    [Obsolete(
+        "TerrainFeature is legacy. Use profile-driven terrain and foliage " +
+        "runtime blocks.")]
     public class TerrainFeature : MonoBehaviour
     {
         // camera frustum planes, updated in render

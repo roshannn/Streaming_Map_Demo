@@ -24,6 +24,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         private MapStreamerSettings mapStreamerSettings;
 
         [SerializeField]
+        private Modules.MapModuleProfile mapModuleProfile;
+
+        [SerializeField]
         private NodeBuilderBase[] builders = Array.Empty<NodeBuilderBase>();
 
         protected override void Configure(IContainerBuilder builder)
@@ -43,7 +46,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             new TraversalInstaller().Install(builder);
             new ExternalAssetsInstaller().Install(builder);
             new BuildingInstaller().Install(builder);
-            new ModulesInstaller().Install(builder);
+            new ModulesInstaller(mapModuleProfile).Install(builder);
             new GizmoInstaller().Install(builder);
             new StreamingInstaller().Install(builder);
         }

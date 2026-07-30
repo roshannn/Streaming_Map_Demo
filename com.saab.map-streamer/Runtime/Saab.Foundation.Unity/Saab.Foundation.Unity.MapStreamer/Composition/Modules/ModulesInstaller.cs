@@ -8,6 +8,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Composition.Modules
 {
     internal sealed class ModulesInstaller : IInstaller
     {
+        private readonly MapModuleProfile _profile;
+
+        public ModulesInstaller(MapModuleProfile profile)
+        {
+            _profile = profile;
+        }
+
         public void Install(IContainerBuilder builder)
         {
             builder.RegisterComponentInHierarchy<MapShadingModule>()
@@ -20,8 +27,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Composition.Modules
                 .As<ITerrainAddedHandler>()
                 .As<ITerrainRemovedHandler>()
                 .As<IStreamingFrameCompletedHandler>();
+            var catalog = new MapModuleCatalog();
+            _profile?.RegisterModules(catalog);
+            builder.RegisterInstance(catalog);
             builder.Register<TerrainModuleContextFactory>(Lifetime.Scoped);
-            builder.Register<MapModuleBridge>(Lifetime.Scoped)
+            builder.Register<MapModuleRuntime>(Lifetime.Scoped)
                 .AsSelf()
                 .As<IMapModuleRuntime>()
                 .As<IStreamingFrameCompletionSink>();

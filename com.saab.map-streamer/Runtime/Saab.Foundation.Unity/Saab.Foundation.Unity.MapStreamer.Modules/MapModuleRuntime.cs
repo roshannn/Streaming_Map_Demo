@@ -5,43 +5,42 @@ using Saab.Foundation.Unity.MapStreamer.Streaming;
 using Saab.Foundation.Unity.MapStreamer.Traversal.Events;
 
 using UnityEngine;
+using VContainer;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
-    internal sealed class MapModuleBridge :
+    internal sealed class MapModuleRuntime :
         IMapModuleRuntime,
         IStreamingFrameCompletionSink
     {
         private readonly NodeEvents _nodeEvents;
         private readonly TerrainModuleContextFactory _contextFactory;
         private readonly IStreamingLog _log;
-        private readonly IReadOnlyList<IMapModule> _modules;
-        private readonly IReadOnlyList<ITerrainAddedHandler> _terrainAdded;
-        private readonly IReadOnlyList<ITerrainRemovedHandler> _terrainRemoved;
-        private readonly IReadOnlyList<IStreamingFrameCompletedHandler>
-            _frameCompleted;
+        private readonly IReadOnlyList<IMapModule> _legacyModules;
+        private readonly MapModuleCatalog _catalog;
+        private readonly IMapModuleServices _services;
+        private IReadOnlyList<IMapModule> _modules;
         private readonly Dictionary<GameObject, TerrainModuleContext>
             _terrainRegistrations =
                 new Dictionary<GameObject, TerrainModuleContext>();
 
         private int _initializedModuleCount;
 
-        public MapModuleBridge(
+        public MapModuleRuntime(
             NodeEvents nodeEvents,
             TerrainModuleContextFactory contextFactory,
             IStreamingLog log,
             IEnumerable<IMapModule> modules,
-            IEnumerable<ITerrainAddedHandler> terrainAdded,
-            IEnumerable<ITerrainRemovedHandler> terrainRemoved,
-            IEnumerable<IStreamingFrameCompletedHandler> frameCompleted)
+            MapModuleCatalog catalog,
+            IObjectResolver resolver)
         {
             _nodeEvents = nodeEvents;
             _contextFactory = contextFactory;
             _log = log;
-            _modules = ToList(modules);
-            _terrainAdded = ToList(terrainAdded);
-            _terrainRemoved = ToList(terrainRemoved);
-            _frameCompleted = ToList(frameCompleted);
+            _legacyModules = ToList(modules);
+            _catalog = catalog;
+            _services = new MapModuleServices(resolver);
+            _modules = Array.Empty<IMapModule>();
         }
 
         public bool IsInitialized { get; private set; }
@@ -57,6 +56,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             try
             {
+                if (_modules.Count == 0)
+                    _modules = CreateModules();
+
                 for (; _initializedModuleCount < _modules.Count;
                      ++_initializedModuleCount)
                 {
@@ -102,12 +104,21 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             var moduleContext = new StreamingFrameModuleContext(
                 context.RenderTime,
                 context.Elapsed);
-            foreach (var handler in _frameCompleted)
+            var mapEvent = new StreamingFrameCompletedEvent(
+                in moduleContext);
+            foreach (var module in _modules)
             {
-                TryDispatch(
-                    handler,
-                    () => handler.OnStreamingFrameCompleted(
-                        in moduleContext));
+                if (module is
+                    IMapEventHandler<StreamingFrameCompletedEvent> handler)
+                    TryDispatch(
+                        handler,
+                        () => handler.Handle(in mapEvent));
+                else if (module is
+                         IStreamingFrameCompletedHandler legacyHandler)
+                    TryDispatch(
+                        legacyHandler,
+                        () => legacyHandler.OnStreamingFrameCompleted(
+                            in moduleContext));
             }
         }
 
@@ -138,11 +149,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             _terrainRegistrations[gameObject] = context;
             ++AddedTerrainCount;
-            foreach (var handler in _terrainAdded)
+            var mapEvent = new TerrainAddedEvent(in context);
+            foreach (var module in _modules)
             {
-                TryDispatch(
-                    handler,
-                    () => handler.OnTerrainAdded(in context));
+                if (module is IMapEventHandler<TerrainAddedEvent> handler)
+                    TryDispatch(
+                        handler,
+                        () => handler.Handle(in mapEvent));
+                else if (module is ITerrainAddedHandler legacyHandler)
+                    TryDispatch(
+                        legacyHandler,
+                        () => legacyHandler.OnTerrainAdded(in context));
             }
         }
 
@@ -185,11 +202,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             in TerrainModuleContext terrain)
         {
             var removal = new TerrainRemovalContext(in terrain);
-            foreach (var handler in _terrainRemoved)
+            var mapEvent = new TerrainRemovedEvent(in removal);
+            foreach (var module in _modules)
             {
-                TryDispatch(
-                    handler,
-                    () => handler.OnTerrainRemoved(in removal));
+                if (module is IMapEventHandler<TerrainRemovedEvent> handler)
+                    TryDispatch(
+                        handler,
+                        () => handler.Handle(in mapEvent));
+                else if (module is ITerrainRemovedHandler legacyHandler)
+                    TryDispatch(
+                        legacyHandler,
+                        () => legacyHandler.OnTerrainRemoved(in removal));
             }
         }
 
@@ -215,6 +238,25 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     $"Map module {handler.GetType().FullName} failed: " +
                     exception);
             }
+        }
+
+        private IReadOnlyList<IMapModule> CreateModules()
+        {
+            var definitions = _catalog.GetOrderedDefinitions();
+            if (definitions.Count == 0)
+                return _legacyModules;
+
+            var modules = new List<IMapModule>(definitions.Count);
+            foreach (var definition in definitions)
+            {
+                var module = definition.CreateRuntime(_services);
+                if (module == null)
+                    throw new InvalidOperationException(
+                        $"Map module '{definition.ModuleId}' returned no runtime.");
+                modules.Add(module);
+            }
+
+            return modules;
         }
 
         private static IReadOnlyList<T> ToList<T>(IEnumerable<T> values) =>

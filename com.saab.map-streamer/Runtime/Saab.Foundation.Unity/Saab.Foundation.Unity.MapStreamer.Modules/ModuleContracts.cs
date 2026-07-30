@@ -4,10 +4,46 @@ using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
+    public interface IMapEventHandler<TEvent>
+    {
+        void Handle(in TEvent mapEvent);
+    }
+
     public interface IMapModule
     {
         void Initialize();
         void Shutdown();
+    }
+
+    public readonly struct TerrainAddedEvent
+    {
+        public TerrainAddedEvent(in TerrainModuleContext terrain)
+        {
+            Terrain = terrain;
+        }
+
+        public TerrainModuleContext Terrain { get; }
+    }
+
+    public readonly struct TerrainRemovedEvent
+    {
+        public TerrainRemovedEvent(in TerrainRemovalContext terrain)
+        {
+            Terrain = terrain;
+        }
+
+        public TerrainRemovalContext Terrain { get; }
+    }
+
+    public readonly struct StreamingFrameCompletedEvent
+    {
+        public StreamingFrameCompletedEvent(
+            in StreamingFrameModuleContext frame)
+        {
+            Frame = frame;
+        }
+
+        public StreamingFrameModuleContext Frame { get; }
     }
 
     public interface ITerrainAddedHandler
