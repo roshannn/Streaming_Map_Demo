@@ -13,8 +13,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             new List<DynamicLoadEvent>(100);
         private readonly Dictionary<long, DynamicLoadEvent> _activeLoads =
             new Dictionary<long, DynamicLoadEvent>();
-        private readonly List<NodeActivationEvent> _pendingActivations =
-            new List<NodeActivationEvent>(100);
+        private readonly Dictionary<long, NodeActivationEvent>
+            _pendingActivations =
+                new Dictionary<long, NodeActivationEvent>(100);
         private bool _subscribed;
 
         public DynamicLoadCoordinator(
@@ -63,13 +64,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
 
                         var gameObject = pending.Node.Traverse();
                         if (gameObject != null)
+                        {
                             gameObject.transform.SetParent(anchor, false);
+                        }
                     }
                     else if (pending.Loader.TryFindGameObjects(
                                  out var gameObjects))
                     {
                         foreach (var gameObject in gameObjects)
+                        {
                             _hierarchy.ReleaseChildren(gameObject.transform);
+                        }
                     }
                 }
                 finally
@@ -85,7 +90,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
 
         public void ProcessActivations()
         {
-            foreach (var activation in _pendingActivations)
+            foreach (var activation in _pendingActivations.Values)
             {
                 try
                 {
@@ -117,7 +122,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
             _pendingLoads.Clear();
             _activeLoads.Clear();
 
-            foreach (var activation in _pendingActivations)
+            foreach (var activation in _pendingActivations.Values)
                 activation.Node.Dispose();
 
             _pendingActivations.Clear();
@@ -133,7 +138,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Streaming
 
         private void OnActivationChanged(NodeActivationEvent activation)
         {
-            _pendingActivations.Add(activation);
+            var identity = activation.Node.Identity;
+            if (_pendingActivations.TryGetValue(identity, out var previous))
+                previous.Node.Dispose();
+
+            _pendingActivations[identity] = activation;
         }
 
         private void OnLoadChanged(DynamicLoadEvent change)

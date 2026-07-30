@@ -49,14 +49,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Traversal
             NodeAction actionReceiver)
         {
             var childPtr = child.GetNativeReference();
-            if (NodeUtils.HasGameObjectsUnsafe(childPtr))
-                return;
+            if (!NodeUtils.HasGameObjectsUnsafe(childPtr))
+            {
+                NodeUtils.AddGameObjectReferenceUnsafe(
+                    childPtr,
+                    node.GameObject);
 
-            NodeUtils.AddGameObjectReferenceUnsafe(
-                childPtr,
-                node.GameObject);
-
-            node.MarkRegisteredInNodeUtils();
+                node.MarkRegisteredInNodeUtils();
+            }
 
             child.AddActionInterface(actionReceiver, NodeActionEvent.IS_TRAVERSABLE);
             child.AddActionInterface(actionReceiver, NodeActionEvent.IS_NOT_TRAVERSABLE);
