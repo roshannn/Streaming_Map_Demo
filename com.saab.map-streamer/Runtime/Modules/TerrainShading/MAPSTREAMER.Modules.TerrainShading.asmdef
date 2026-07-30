@@ -1,0 +1,19 @@
+{
+    "name": "MAPSTREAMER.Modules.TerrainShading",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading",
+    "references": [
+        "MAPSTREAMER",
+        "MAPSTREAMER.Modules",
+        "MAPSTREAMER.Unity.Utilities",
+        "Saab.Utility.GfxCaps"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

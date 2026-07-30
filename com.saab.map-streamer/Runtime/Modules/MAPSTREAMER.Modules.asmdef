@@ -1,0 +1,19 @@
+{
+    "name": "MAPSTREAMER.Modules",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Modules",
+    "references": [
+        "GUID:b0214a6008ed146ff8f122a6a9c2f6cc",
+        "MAPSTREAMER",
+        "MAPSTREAMER.Streaming.Core",
+        "MAPSTREAMER.Unity.Utilities"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

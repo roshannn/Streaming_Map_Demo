@@ -1,0 +1,21 @@
+{
+    "name": "MAPSTREAMER.Editor",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Editor",
+    "references": [
+        "MAPSTREAMER",
+        "MAPSTREAMER.Modules",
+        "MAPSTREAMER.Modules.Foliage",
+        "MAPSTREAMER.Modules.TerrainShading"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

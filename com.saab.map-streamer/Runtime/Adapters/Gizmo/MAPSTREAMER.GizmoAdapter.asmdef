@@ -1,0 +1,17 @@
+{
+    "name": "MAPSTREAMER.GizmoAdapter",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.GizmoAdapter",
+    "references": [
+        "MAPSTREAMER.Streaming.Core",
+        "Saab.Foundation.Map"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,21 @@
+{
+    "name": "MAPSTREAMER.Modules.Foliage",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Modules.Foliage",
+    "references": [
+        "MAPSTREAMER",
+        "MAPSTREAMER.Modules",
+        "MAPSTREAMER.Streaming.Core",
+        "MAPSTREAMER.Unity.Utilities",
+        "Saab.Foundation.Map",
+        "Saab.Utility.GfxCaps"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

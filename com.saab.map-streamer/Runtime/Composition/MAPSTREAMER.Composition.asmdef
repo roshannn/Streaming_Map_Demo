@@ -1,0 +1,23 @@
+{
+    "name": "MAPSTREAMER.Composition",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Composition",
+    "references": [
+        "GUID:b0214a6008ed146ff8f122a6a9c2f6cc",
+        "MAPSTREAMER",
+        "MAPSTREAMER.GizmoAdapter",
+        "MAPSTREAMER.Modules",
+        "MAPSTREAMER.Modules.Foliage",
+        "MAPSTREAMER.Modules.TerrainShading",
+        "MAPSTREAMER.Streaming.Core",
+        "Saab.Foundation.Map"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
