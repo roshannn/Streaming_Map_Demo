@@ -19,7 +19,22 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
     public static class DebugUtils
     {
-        public static RenderTexture LastCopiedBuffer { get; set; }
+        private static RenderTexture _lastCopiedBuffer;
+        private static bool _ownsLastCopiedBuffer;
+
+        public static RenderTexture LastCopiedBuffer
+        {
+            get => _lastCopiedBuffer;
+            set
+            {
+                if (_lastCopiedBuffer == value)
+                    return;
+
+                ReleaseOwnedBuffer();
+                _lastCopiedBuffer = value;
+                _ownsLastCopiedBuffer = false;
+            }
+        }
 
         public static ComputeShader CopyShader { get; set; }
 
@@ -27,7 +42,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         {
             int threads = 8;
 
-            if (dimensions.x == 0 || dimensions.y == 0)
+            if (rt == null || cs == null || buffer == null)
+                return false;
+
+            if (dimensions.x <= 0 || dimensions.y <= 0)
                 return false; //TODO: Log message
 
             if (rt.width != dimensions.x || rt.height != dimensions.y)
@@ -47,7 +65,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             var groupy = Mathf.CeilToInt((float)dimensions.y / threads);
             cs.Dispatch(kernel, groupx, groupy, 1);
 
-            LastCopiedBuffer = rt;
+            if (_lastCopiedBuffer != rt)
+            {
+                ReleaseOwnedBuffer();
+                _lastCopiedBuffer = rt;
+                _ownsLastCopiedBuffer = false;
+            }
 
             return true;
         }
@@ -57,16 +80,50 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (CopyShader == null)
                 return false;
 
-            var rt = LastCopiedBuffer;
+            if (buffer == null || dimensions.x <= 0 || dimensions.y <= 0)
+                return false;
 
-            if (LastCopiedBuffer != null)
+            if (_lastCopiedBuffer == null ||
+                _lastCopiedBuffer.width != dimensions.x ||
+                _lastCopiedBuffer.height != dimensions.y)
             {
-                rt = RenderTexture.GetTemporary(dimensions.x, dimensions.y); //TODO: RELEASE
-                rt.enableRandomWrite = true;
+                ReleaseOwnedBuffer();
+                _lastCopiedBuffer = new RenderTexture(
+                    dimensions.x,
+                    dimensions.y,
+                    0,
+                    RenderTextureFormat.ARGB32)
+                {
+                    enableRandomWrite = true,
+                    name = "MapStreamer Debug Buffer"
+                };
+                _lastCopiedBuffer.Create();
+                _ownsLastCopiedBuffer = true;
             }
-            rt = LastCopiedBuffer;
 
-            return BufferToRenderTexture(rt, CopyShader, buffer, dimensions, fov);
+            return BufferToRenderTexture(
+                _lastCopiedBuffer,
+                CopyShader,
+                buffer,
+                dimensions,
+                fov);
+        }
+
+        public static void ReleaseLastCopiedBuffer()
+        {
+            ReleaseOwnedBuffer();
+            _lastCopiedBuffer = null;
+        }
+
+        private static void ReleaseOwnedBuffer()
+        {
+            if (!_ownsLastCopiedBuffer || _lastCopiedBuffer == null)
+                return;
+
+            _lastCopiedBuffer.Release();
+            Object.Destroy(_lastCopiedBuffer);
+            _lastCopiedBuffer = null;
+            _ownsLastCopiedBuffer = false;
         }
     }
 }
