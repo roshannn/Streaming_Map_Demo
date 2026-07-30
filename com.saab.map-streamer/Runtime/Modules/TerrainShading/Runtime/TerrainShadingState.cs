@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -12,7 +12,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Runtime
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Rendering;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Resources;
-using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Runtime;
 
     internal sealed class TerrainShadingState : IDisposable
     {

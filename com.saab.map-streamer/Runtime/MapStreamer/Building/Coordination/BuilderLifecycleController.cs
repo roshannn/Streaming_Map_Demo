@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using GizmoSDK.GizmoBase;
 
 using Saab.Foundation.Unity.MapStreamer.Nodes.Pooling;
-using Saab.Foundation.Unity.MapStreamer.Nodes.Pooling;
 using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 namespace Saab.Foundation.Unity.MapStreamer.Building.Coordination

@@ -17,7 +17,6 @@ using UnityEngine.Rendering;
 namespace Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Configuration
 {
 using Saab.Foundation.Unity.MapStreamer.Modules;
-using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Configuration;
 using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Rendering;
 using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Resources;
 using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Runtime;

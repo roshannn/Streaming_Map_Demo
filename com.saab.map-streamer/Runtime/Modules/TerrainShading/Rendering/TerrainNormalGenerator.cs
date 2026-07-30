@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -10,7 +10,6 @@ using UnityEngine;
 namespace Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Rendering
 {
 using Saab.Foundation.Unity.MapStreamer.Modules;
-using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Rendering;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Resources;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Runtime;
 

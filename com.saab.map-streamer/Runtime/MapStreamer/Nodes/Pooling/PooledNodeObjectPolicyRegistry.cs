@@ -2,7 +2,6 @@
 
 using System.Collections;
 using System.Collections.Generic;
-using Saab.Foundation.Unity.MapStreamer.Nodes.Pooling;
 
 namespace Saab.Foundation.Unity.MapStreamer.Nodes.Pooling
 {
