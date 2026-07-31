@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 
 using Saab.Foundation.Unity.MapStreamer.Modules;
+using Saab.Foundation.Unity.MapStreamer.Modules.Runtime;
 
 using UnityEngine;
 

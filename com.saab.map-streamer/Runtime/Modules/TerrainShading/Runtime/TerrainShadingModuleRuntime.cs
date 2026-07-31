@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Saab.Utility.GfxCaps;
-using Saab.Foundation.Unity.MapStreamer.Utils;
 
 using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Runtime
 {
 using Saab.Foundation.Unity.MapStreamer.Modules;
+using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Configuration;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Rendering;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Resources;
 
@@ -18,7 +18,7 @@ using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Resources;
         IMapEventHandler<TerrainAddedEvent>,
         IMapEventHandler<TerrainRemovedEvent>
     {
-        private readonly TerrainShadingModuleDefinition _definition;
+        private readonly TerrainShadingConfiguration _configuration;
         private readonly Dictionary<
             TerrainModuleIdentity,
             TerrainShadingState> _terrain =
@@ -31,9 +31,10 @@ using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Resources;
         private bool _initialized;
 
         public TerrainShadingModuleRuntime(
-            TerrainShadingModuleDefinition definition)
+            TerrainShadingConfiguration configuration)
         {
-            _definition = definition;
+            _configuration = configuration ??
+                throw new ArgumentNullException(nameof(configuration));
         }
 
         public void Initialize()
@@ -43,20 +44,21 @@ using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Resources;
 
             Shader.SetGlobalColor(
                 "_TargetTerrainColor",
-                _definition.TargetHue);
+                _configuration.TargetHue);
             Shader.SetGlobalFloat(
                 "_HueShift",
-                _definition.HueShiftInclusion);
+                _configuration.HueShiftInclusion);
 
-            var enabled = _definition.EnableDetailedTextures &&
+            var enabled = _configuration.EnableDetailedTextures &&
                 GfxCaps.CurrentCaps.HasFlag(
                     Capability.UseTerrainDetailTextures);
             _textures = new TerrainTextureLibrary();
-            if (enabled && !_textures.Build(_definition.DetailTextureSet))
+            if (enabled &&
+                !_textures.Build(_configuration.DetailTextureSet))
                 throw new InvalidOperationException(
                     "Terrain detail texture library could not be built.");
             _normalGenerator = new TerrainNormalGenerator(
-                _definition.NormalComputeShader);
+                _configuration.NormalComputeShader);
             _initialized = true;
         }
 

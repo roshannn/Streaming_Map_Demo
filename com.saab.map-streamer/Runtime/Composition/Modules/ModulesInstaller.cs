@@ -1,12 +1,12 @@
+using System;
+
 using Saab.Foundation.Unity.MapStreamer.Modules;
-using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Runtime;
 using Saab.Foundation.Unity.MapStreamer.Modules.Runtime;
 using Saab.Foundation.Unity.MapStreamer.Streaming;
 
 using VContainer;
 using VContainer.Unity;
 
-#pragma warning disable 0618
 namespace Saab.Foundation.Unity.MapStreamer.Composition.Modules
 {
     internal sealed class ModulesInstaller : IInstaller
@@ -20,20 +20,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Composition.Modules
 
         public void Install(IContainerBuilder builder)
         {
-            builder.RegisterComponentInHierarchy<MapShadingModule>()
-                .AsSelf()
-                .As<IMapModule>()
-                .As<ITerrainAddedHandler>();
             if (_profile == null)
-            {
-                builder.RegisterComponentInHierarchy<FoliageModule>()
-                    .AsSelf();
-                builder.Register<FoliageCompatibilityRuntime>(
-                        Lifetime.Scoped)
-                    .As<IMapModule>();
-            }
+                throw new InvalidOperationException(
+                    "A MapModuleProfile is required.");
+
             var catalog = new MapModuleCatalog();
-            _profile?.RegisterModules(catalog);
+            _profile.RegisterModules(catalog);
             builder.RegisterInstance(catalog);
             builder.Register<TerrainModuleContextFactory>(Lifetime.Scoped);
             builder.Register<MapModuleRuntime>(Lifetime.Scoped)
@@ -43,4 +35,3 @@ namespace Saab.Foundation.Unity.MapStreamer.Composition.Modules
         }
     }
 }
-#pragma warning restore 0618

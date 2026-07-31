@@ -37,6 +37,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (mapStreamerSettings == null)
                 throw new InvalidOperationException(
                     "MapStreamerSettings must be assigned on MapStreamerLifetimeScope.");
+            if (mapModuleProfile == null)
+                throw new InvalidOperationException(
+                    "MapModuleProfile must be assigned on MapStreamerLifetimeScope.");
 
             new ConfigurationInstaller(
                 mapConfig,

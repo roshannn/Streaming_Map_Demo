@@ -1,3 +1,4 @@
+using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Configuration;
 using Saab.Foundation.Unity.MapStreamer.Modules.TerrainShading.Runtime;
 
 using UnityEngine;
@@ -51,6 +52,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         public override IMapModule CreateRuntime(
             IMapModuleServices services) =>
-            new TerrainShadingModuleRuntime(this);
+            new TerrainShadingModuleRuntime(CreateConfiguration());
+
+        internal TerrainShadingConfiguration CreateConfiguration() =>
+            new TerrainShadingConfiguration(
+                enableDetailedTextures,
+                hueShiftInclusion,
+                targetHue,
+                detailTextureSet,
+                normalComputeShader);
     }
 }

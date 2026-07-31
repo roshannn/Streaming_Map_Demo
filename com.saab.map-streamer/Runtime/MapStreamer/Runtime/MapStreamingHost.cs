@@ -11,7 +11,6 @@ using VContainer;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
-    [RequireComponent(typeof(NodeEvents))]
     public sealed class MapStreamingHost : MonoBehaviour
     {
         private MapLifecycleController _mapLifecycle;

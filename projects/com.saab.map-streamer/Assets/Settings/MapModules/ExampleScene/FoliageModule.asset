@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc6d7ece4b0a4b9c9941097f82c9323f, type: 3}
+  m_Name: FoliageModule
+  m_EditorClassIdentifier: 
+  enabled: 1
+  executionOrder: 0
+  dependencies: []
+  computeShader: {fileID: 7200000, guid: 658d4304a9fd9fe49bd7d3b0ede75fb1, type: 3}
+  foliageShader: {fileID: 4800000, guid: 068e6fbc052d17648b666532b330a5a7, type: 3}
+  perlinNoise: {fileID: 0}
+  downsampleMaterial: {fileID: 2100000, guid: ebe65c385a1ee1e40b90aaffc81cc315, type: 2}
+  layer: 0
+  occlusion: 0
+  disabled: 0
+  debugPrintCount: 0
+  debugNoDraw: 0
+  nativeLeakDetection: 0
+  resourcePoolBytes: 67108864
+  features:
+  - SettingsType: 0
+    mapFeature: 2048
+    FoliageSet: {fileID: 11400000, guid: a41238585ae0397468f576c11c14ce64, type: 2}
+    Enabled: 1
+    BufferSize: 2000000
+    ScreenCoverage: 0.005
+    Density: 0.15
+    NodeMaxWidth: 2048
+    Shadows: 1
+    Crossboard: 1
+    DrawDistance: 0
+  - SettingsType: 1
+    mapFeature: 2049
+    FoliageSet: {fileID: 11400000, guid: da5ccc4a63dfdc540afefcd1b3990158, type: 2}
+    Enabled: 1
+    BufferSize: 2000000
+    ScreenCoverage: 0.005
+    Density: 1
+    NodeMaxWidth: 500
+    Shadows: 0
+    Crossboard: 0
+    DrawDistance: 0
