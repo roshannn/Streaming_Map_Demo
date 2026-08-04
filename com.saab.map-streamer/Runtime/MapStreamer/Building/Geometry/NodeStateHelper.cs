@@ -69,18 +69,38 @@ namespace Saab.Foundation.Unity.MapStreamer
 
     public static class StateHelper
     {
+        private enum MissingTextureBehavior
+        {
+            Fail,
+            UseWhitePlaceholder
+        }
+
         private static readonly Dictionary<TextureFormat, bool> _supportedFormats = new Dictionary<TextureFormat, bool>();
 
         public static bool Build(State state, out StateBuildOutput output, TextureManager textureCache = null)
         {
             output = default;
 
-            if (!ReadTextureFromState(state, out Texture2D texture, textureCache))
+            if (!ReadTextureFromState(
+                state,
+                out Texture2D texture,
+                textureCache,
+                out _,
+                MissingTextureBehavior.UseWhitePlaceholder,
+                false))
                 return false;
 
             output.Texture = texture;
 
-            if (ReadTextureFromState(state, out Texture2D feature, textureCache, out TextureImageInfo info, 1, false))       // Features always singletons and no mipmap force
+            if (ReadTextureFromState(
+                state,
+                out Texture2D feature,
+                textureCache,
+                out TextureImageInfo info,
+                MissingTextureBehavior.Fail,
+                true,
+                1,
+                false))       // Features always singletons and no mipmap force
             {
                 if (info != null && info.homography.Is("gzImageHomography"))
                 {
@@ -91,7 +111,15 @@ namespace Saab.Foundation.Unity.MapStreamer
                     output.Feature = null;
             }
 
-            if (ReadTextureFromState(state, out Texture2D surface, textureCache, out info, 2, false))       // Features always singletons and no mipmap force
+            if (ReadTextureFromState(
+                state,
+                out Texture2D surface,
+                textureCache,
+                out info,
+                MissingTextureBehavior.Fail,
+                true,
+                2,
+                false))       // Features always singletons and no mipmap force
             {
                 if (info != null && info.homography.Is("gzImageHomography"))
                 {
@@ -109,7 +137,13 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             output = default;
 
-            if (!ReadTextureFromState(state, out Texture2D texture, textureCache))
+            if (!ReadTextureFromState(
+                state,
+                out Texture2D texture,
+                textureCache,
+                out _,
+                MissingTextureBehavior.UseWhitePlaceholder,
+                false))
                 return false;
 
             output = texture;
@@ -117,13 +151,41 @@ namespace Saab.Foundation.Unity.MapStreamer
             return true;
         }
 
-        private static bool ReadTextureFromState(State state, out Texture2D result, TextureManager textureCache, out TextureImageInfo info, uint unit=0,bool useMipMap=true)
+        private static bool ReadTextureFromState(
+            State state,
+            out Texture2D result,
+            TextureManager textureCache,
+            out TextureImageInfo info,
+            MissingTextureBehavior missingTextureBehavior,
+            bool readMetadata,
+            uint unit = 0,
+            bool useMipMaps = true)
         {
             result = null;
             info = null;
 
             if (!state.HasTexture(unit) || state.GetMode(StateMode.TEXTURE) != StateModeActivation.ON)
-                return false;
+            {
+                if (missingTextureBehavior == MissingTextureBehavior.Fail)
+                    return false;
+
+                if (textureCache != null)
+                {
+                    var ptr = state.GetNativeReference();
+
+                    if (textureCache.TryGet(ptr, out Texture cachedTexture, out _))
+                    {
+                        result = (Texture2D)cachedTexture;
+                        return true;
+                    }
+
+                    result = CopyWhiteTexture();
+                    return textureCache.TryAdd(ptr, result, null);
+                }
+
+                result = CopyWhiteTexture();
+                return true;
+            }
 
             using (var texture = state.GetTexture(unit))
             {
@@ -136,91 +198,21 @@ namespace Saab.Foundation.Unity.MapStreamer
                         if (textureCache.TryGet(ptr, out Texture cachedTexture, out TextureImageInfo cachedInfo))
                         {
                             result = (Texture2D)cachedTexture;
-                            info = cachedInfo;
+                            info = readMetadata ? cachedInfo : null;
                             return true;
                         }
 
-                        info = new TextureImageInfo();
+                        info = readMetadata ? new TextureImageInfo() : null;
 
-                        if (!CopyTexture(texture, out result, info, useMipMap))
+                        if (!CopyTexture(texture, out result, info, useMipMaps))
                             return false;
 
                         return textureCache.TryAdd(ptr, result, info);
                     }
 
-                    info = new TextureImageInfo();
+                    info = readMetadata ? new TextureImageInfo() : null;
 
-                    if (!CopyTexture(texture, out result, info, useMipMap))
-                        return false;
-                }
-                finally
-                {
-                    // prevent dispose from locking object by releasing it manually here
-                    texture.ReleaseAlreadyLocked();
-                }
-            }
-
-            return true;
-        }
-
-        private static bool ReadTextureFromState(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)
-        {
-            return ReadTextureFromStateInternal(
-                state,
-                out result,
-                textureCache,
-                unit,
-                useMipMap);
-        }
-
-        private static bool ReadTextureFromStateInternal(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)
-        {
-            result = null;
-
-            // allow states without texture by using Texture2D.whiteTexture as placeholder
-            if (!state.HasTexture(unit) || state.GetMode(StateMode.TEXTURE) != StateModeActivation.ON)
-            {
-                if (textureCache != null)
-                {
-                    var ptr = state.GetNativeReference();
-
-                    if (textureCache.TryGet(ptr, out Texture cachedTexture, out _))
-                    {
-                        result = (Texture2D)cachedTexture;
-                        return true;
-                    }
-
-                    result = CopyWhiteTexture();
-
-                    return textureCache.TryAdd(ptr, result, null);
-                }
-
-                result = CopyWhiteTexture();
-
-                return true;
-            }
-
-            using (var texture = state.GetTexture(unit))
-            {
-                try
-                {
-                    if (textureCache != null)
-                    {
-                        var ptr = texture.GetNativeReference();
-
-                        if (textureCache.TryGet(ptr, out Texture cachedTexture, out _))
-                        {
-                            result = (Texture2D)cachedTexture;
-                            return true;
-                        }
-
-                        if (!CopyTexture(texture, out result, null, useMipMap))
-                            return false;
-
-                        return textureCache.TryAdd(ptr, result, null);
-                    }
-
-                    if (!CopyTexture(texture, out result, null, useMipMap))
+                    if (!CopyTexture(texture, out result, info, useMipMaps))
                         return false;
                 }
                 finally
@@ -241,7 +233,11 @@ namespace Saab.Foundation.Unity.MapStreamer
             return dst;
         }
 
-        private static bool CopyTexture(gzTexture gzTexture, out Texture2D result, TextureImageInfo info, bool mipChain = true)
+        private static bool CopyTexture(
+            gzTexture gzTexture,
+            out Texture2D result,
+            TextureImageInfo info,
+            bool useMipMaps = true)
         {
             result = null;
 
@@ -250,164 +246,136 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             using (var image = gzTexture.GetImage())
             {
-                ImageFormat imageFormat = image.Format;
-
-                ComponentType componentType = image.ComponentType;
-
-                TextureFormat textureFormat = GetUnityTextureFormat(imageFormat,componentType);
-
-                bool supported = IsTextureFormatSupported(textureFormat);
-
-                bool uncompress = !supported;
-
-                var nativePtr = IntPtr.Zero;
-                
-                if (!gzTexture.GetMipMapImageArray(ref nativePtr, out uint size, 
-                    out ImageFormat finalImageFormat, out ComponentType finalComponentType, out _,
-                    out uint width, out uint height, out uint depth, mipChain, uncompress))
+                if (!TryGetImageData(
+                    gzTexture,
+                    image,
+                    useMipMaps,
+                    out IntPtr nativePtr,
+                    out uint size,
+                    out uint width,
+                    out uint height,
+                    out TextureFormat textureFormat))
                     return false;
 
-                if (depth != 1)
-                    return false;
-
-                // with uncompress enabled, image might have been mutated during GetMipMapImageArray
-                if (finalImageFormat != imageFormat || finalComponentType != image.ComponentType)
-                {
-                    textureFormat = GetUnityTextureFormat(finalImageFormat, finalComponentType);
-
-                    if (!IsTextureFormatSupported(textureFormat))
-                        return false;
-                }
-
-                // we try to reuse texture objects when streaming terrain, this improves performance
-                // by almost 2X, a small cache of only 256 MB should be enough since terrain textures
-                // are quite small but frequently changed
-                result = Texture2DCache.GetOrCreateTexture((int)width, (int)height, textureFormat, mipChain, out bool canBeRecycled);
-
-                result.wrapModeU = GetUnityTextureWrapMode(gzTexture.WrapS);
-                result.wrapModeV = GetUnityTextureWrapMode(gzTexture.WrapT);
-                result.wrapModeW = GetUnityTextureWrapMode(gzTexture.WrapR);
-                
-
+                result = AcquireUnityTexture(
+                    gzTexture,
+                    width,
+                    height,
+                    textureFormat,
+                    useMipMaps,
+                    out bool canBeRecycled);
                 if (!result)
                     return false;
 
-#if DEBUG
-                result.name = "SM - NodeTexture";
-#endif
-
-#if false
-                unsafe
-                {
-                    void* pointer = nativePtr.ToPointer();
-
-                    NativeArray<byte> _image_data = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<byte>(pointer, (int)size, Allocator.None);
-
-                    result.LoadRawTextureData(_image_data);
-                }
-
-#else
-
-                result.LoadRawTextureData(nativePtr, (int)size);
-
-#endif
-                
-                switch (gzTexture.MinFilter)
-                {
-                    case gzTexture.TextureMinFilter.LINEAR:
-                    case gzTexture.TextureMinFilter.LINEAR_MIPMAP_NEAREST:
-                        result.filterMode = FilterMode.Bilinear;
-                        break;
-
-                    case gzTexture.TextureMinFilter.LINEAR_MIPMAP_LINEAR:
-                        result.filterMode = FilterMode.Trilinear;
-                        break;
-
-                    default:
-                        result.filterMode = FilterMode.Point;
-                        break;
-                }
-
-                // if texture was a candidate for recycling, we keep the CPU side buffer
-                // so that we can update the texture when reused
-                result.Apply(mipChain, makeNoLongerReadable: !canBeRecycled);
-
-                if (info != null)
-                {
-                    info.homography = image.GetAttribute("UserDataImInfo", "ImI-Wrld-Hom");
-
-                    info.border_x = image.GetAttribute("UserDataImInfo", "ImI-Pixel-X-border");
-                    info.border_y = image.GetAttribute("UserDataImInfo", "ImI-Pixel-Y-border");
-                }
+                UploadTextureData(
+                    result,
+                    gzTexture.MinFilter,
+                    nativePtr,
+                    size,
+                    useMipMaps,
+                    canBeRecycled);
+                ReadImageMetadata(image, info);
             }
 
             return true;
         }
 
-        private static TextureFormat GetUnityTextureFormat(ImageFormat imageFormat , ComponentType compType)
+        private static bool TryGetImageData(
+            gzTexture gzTexture,
+            Image image,
+            bool useMipMaps,
+            out IntPtr nativePtr,
+            out uint size,
+            out uint width,
+            out uint height,
+            out TextureFormat textureFormat)
         {
-            switch (imageFormat)
+            ImageFormat imageFormat = image.Format;
+            ComponentType componentType = image.ComponentType;
+            textureFormat = GizmoTextureFormatConverter.ToUnityFormat(imageFormat, componentType);
+            bool uncompress = !IsTextureFormatSupported(textureFormat);
+            nativePtr = IntPtr.Zero;
+
+            if (!gzTexture.GetMipMapImageArray(
+                ref nativePtr,
+                out size,
+                out ImageFormat finalImageFormat,
+                out ComponentType finalComponentType,
+                out _,
+                out width,
+                out height,
+                out uint depth,
+                useMipMaps,
+                uncompress))
+                return false;
+
+            if (depth != 1)
+                return false;
+
+            // With uncompress enabled, the image may have been mutated.
+            if (finalImageFormat != imageFormat || finalComponentType != image.ComponentType)
             {
-                case ImageFormat.RGBA:
-                    if (compType == ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.RGBA32;
-                    if (compType == ComponentType.FLOAT)
-                        return TextureFormat.RGBA32;
-                    if (compType == ComponentType.HALF_FLOAT)
-                        return TextureFormat.RGBAHalf;
-                    break;
+                textureFormat = GizmoTextureFormatConverter.ToUnityFormat(
+                    finalImageFormat,
+                    finalComponentType);
 
-                case ImageFormat.RGB:
-                    if (compType == ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.RGB24;
-                    break;
-
-                case ImageFormat.COMPRESSED_RGBA8_ETC2:
-                    return TextureFormat.ETC2_RGBA8;
-
-                case ImageFormat.COMPRESSED_RGB8_ETC2:
-                    return TextureFormat.ETC2_RGB;
-
-                case ImageFormat.COMPRESSED_RGBA_S3TC_DXT1:
-                case ImageFormat.COMPRESSED_RGB_S3TC_DXT1:
-                    return TextureFormat.DXT1;
-
-                case ImageFormat.COMPRESSED_RGBA_S3TC_DXT5:
-                    return TextureFormat.DXT5;
-
-                case ImageFormat.LUMINANCE:
-                    if(compType==ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.R8;
-                    if (compType == ComponentType.FLOAT)
-                        return TextureFormat.RFloat;
-                    break;
-
-                case ImageFormat.LUMINANCE_ALPHA:
-                    if (compType == ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.RG16;
-                    if (compType == ComponentType.FLOAT)
-                        return TextureFormat.RGFloat;
-                    break;
+                if (!IsTextureFormatSupported(textureFormat))
+                    return false;
             }
 
-            throw new NotSupportedException();
+            return true;
         }
 
-        private static TextureWrapMode GetUnityTextureWrapMode(gzTexture.TextureWrapMode wrapMode)
+        private static Texture2D AcquireUnityTexture(
+            gzTexture gzTexture,
+            uint width,
+            uint height,
+            TextureFormat textureFormat,
+            bool useMipMaps,
+            out bool canBeRecycled)
         {
-            switch (wrapMode)
-            {
-                case gzTexture.TextureWrapMode.CLAMP_TO_EDGE:
-                case gzTexture.TextureWrapMode.CLAMP_TO_BORDER:
-                case gzTexture.TextureWrapMode.CLAMP:
-                    return TextureWrapMode.Clamp;
-                case gzTexture.TextureWrapMode.REPEAT:
-                    return TextureWrapMode.Repeat;
-                case gzTexture.TextureWrapMode.MIRRORED_REPEAT:
-                    return TextureWrapMode.Mirror;
-                default:
-                    throw new NotSupportedException();
-            }
+            // Reusing texture objects when streaming terrain almost doubles performance.
+            var texture = Texture2DCache.GetOrCreateTexture(
+                (int)width,
+                (int)height,
+                textureFormat,
+                useMipMaps,
+                out canBeRecycled);
+
+            texture.wrapModeU = GizmoTextureFormatConverter.ToUnityWrapMode(gzTexture.WrapS);
+            texture.wrapModeV = GizmoTextureFormatConverter.ToUnityWrapMode(gzTexture.WrapT);
+            texture.wrapModeW = GizmoTextureFormatConverter.ToUnityWrapMode(gzTexture.WrapR);
+
+#if DEBUG
+            texture.name = "SM - NodeTexture";
+#endif
+
+            return texture;
+        }
+
+        private static void UploadTextureData(
+            Texture2D texture,
+            gzTexture.TextureMinFilter minFilter,
+            IntPtr nativePtr,
+            uint size,
+            bool useMipMaps,
+            bool canBeRecycled)
+        {
+            texture.LoadRawTextureData(nativePtr, (int)size);
+            texture.filterMode = GizmoTextureFormatConverter.ToUnityFilterMode(minFilter);
+
+            // Recycled textures retain their CPU-side buffer so they can be updated.
+            texture.Apply(useMipMaps, makeNoLongerReadable: !canBeRecycled);
+        }
+
+        private static void ReadImageMetadata(Image image, TextureImageInfo info)
+        {
+            if (info == null)
+                return;
+
+            info.homography = image.GetAttribute("UserDataImInfo", "ImI-Wrld-Hom");
+            info.border_x = image.GetAttribute("UserDataImInfo", "ImI-Pixel-X-border");
+            info.border_y = image.GetAttribute("UserDataImInfo", "ImI-Pixel-Y-border");
         }
 
         private static bool IsTextureFormatSupported(TextureFormat format)
