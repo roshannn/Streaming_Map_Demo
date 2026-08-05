@@ -50,6 +50,47 @@ namespace Saab.Foundation.Unity.MapStreamer
                 base.CanBuild(node, traversalState, intersectMask);
         }
 
+        public override bool Build(NodeHandle nodeHandle, NodeHandle activeStateNode)
+        {
+            if (!base.Build(nodeHandle, activeStateNode))
+                return false;
+
+            var gameObject = nodeHandle.gameObject;
+            var mesh = gameObject.GetComponent<MeshFilter>().sharedMesh;
+
+            if (!gameObject.TryGetComponent<MeshCollider>(out var meshCollider))
+                meshCollider = gameObject.AddComponent<MeshCollider>();
+
+            // A pooled terrain object can receive a different mesh each time it
+            // is built. Clear the old mesh first so Unity recooks the collider.
+            meshCollider.sharedMesh = null;
+            meshCollider.sharedMesh = mesh;
+            meshCollider.enabled = true;
+
+            return true;
+        }
+
+        public override void BuiltObjectReturnedToPool(
+            GameObject gameObject,
+            bool sharedAsset)
+        {
+            if (gameObject.TryGetComponent<MeshCollider>(out var meshCollider))
+            {
+                meshCollider.sharedMesh = null;
+                meshCollider.enabled = false;
+            }
+
+            base.BuiltObjectReturnedToPool(gameObject, sharedAsset);
+        }
+
+        public override void InitPoolObject(GameObject gameObject)
+        {
+            base.InitPoolObject(gameObject);
+
+            var meshCollider = gameObject.AddComponent<MeshCollider>();
+            meshCollider.enabled = false;
+        }
+
         protected override bool CreateStateNodeResources(NodeHandle stateNode)
         {
             // check if the state has already been loaded

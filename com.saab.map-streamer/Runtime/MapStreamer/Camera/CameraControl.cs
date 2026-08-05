@@ -41,6 +41,12 @@ namespace Saab.Foundation.Unity.MapStreamer
         private float _jumpTime = 4;
         private IMapCoordinates _mapCoordinates;
 
+        public bool InputLocked
+        {
+            get => _inputLocked;
+            set => _inputLocked = value;
+        }
+
         [Inject]
         private void Construct(IMapCoordinates mapCoordinates)
         {
@@ -84,6 +90,17 @@ namespace Saab.Foundation.Unity.MapStreamer
                 Y = value.y;
                 Z = value.z;
             }
+        }
+
+        /// <summary>
+        /// Applies a Unity world-space displacement to the authoritative map position.
+        /// Gizmo uses the opposite sign for its Z coordinate.
+        /// </summary>
+        public void ApplyGlobalMovement(Vector3 unityDisplacement)
+        {
+            X += unityDisplacement.x;
+            Y += unityDisplacement.y;
+            Z -= unityDisplacement.z;
         }
 
         public float JumpInterval

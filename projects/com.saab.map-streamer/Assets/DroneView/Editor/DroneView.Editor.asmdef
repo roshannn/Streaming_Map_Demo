@@ -1,0 +1,8 @@
+{
+  "name": "DroneView.Editor",
+  "rootNamespace": "StreamingMapDemo.Drones.Editor",
+  "references": ["DroneView.Runtime", "Unity.ugui"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true,
+  "noEngineReferences": false
+}

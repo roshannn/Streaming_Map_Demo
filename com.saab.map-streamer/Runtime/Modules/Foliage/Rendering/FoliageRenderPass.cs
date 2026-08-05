@@ -29,18 +29,19 @@ using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Terrain;
             ComputeBuffer points,
             ComputeBuffer indirect,
             float drawDistance,
+            Vector3 boundsCenter,
             int layer,
             bool shadows)
         {
             material.SetBuffer("_PointBuffer", points);
             ComputeBuffer.CopyCount(points, indirect, 0);
             var size = new Vector3(
-                drawDistance,
-                drawDistance,
-                drawDistance);
+                drawDistance * 2f,
+                drawDistance * 2f,
+                drawDistance * 2f);
             Graphics.DrawProceduralIndirect(
                 material,
-                new Bounds(Vector3.zero, size),
+                new Bounds(boundsCenter, size),
                 MeshTopology.Points,
                 indirect,
                 0,

@@ -125,6 +125,7 @@ using Saab.Foundation.Unity.MapStreamer.Modules.FoliageRuntime.Terrain;
                     points,
                     feature.Indirect,
                     feature.DrawDistance,
+                    camera.transform.position,
                     _configuration.Layer,
                     settings.Shadows);
             }
