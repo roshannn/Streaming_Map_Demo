@@ -22,6 +22,9 @@ namespace StreamingMapDemo.Drones
 
         public void Launch(Vector3 worldDirection, Action<DroneBullet> release, Collider[] ignoredColliders = null)
         {
+            if (body == null)
+                body = GetComponent<Rigidbody>();
+
             tracer?.Clear();
             releaseToPool = release;
             isLaunched = true;

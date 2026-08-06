@@ -24,7 +24,21 @@ namespace StreamingMapDemo.Drones.Tests
             Assert.That(prefab.GetComponent<DronePlayerInput>(), Is.Not.Null);
             var playerInput = new SerializedObject(prefab.GetComponent<DronePlayerInput>());
             Assert.That(playerInput.FindProperty("mouseDamping").floatValue, Is.GreaterThan(0f));
-            Assert.That(prefab.GetComponent<DroneMapMovementController>(), Is.Not.Null);
+            DroneMapBridge mapBridge = prefab.GetComponent<DroneMapBridge>();
+            DroneCombatPresenter presenter =
+                prefab.GetComponent<DroneCombatPresenter>();
+            DroneCombatController combat =
+                prefab.GetComponent<DroneCombatController>();
+            Assert.That(mapBridge, Is.Not.Null);
+            Assert.That(presenter, Is.Not.Null);
+            Assert.That(combat, Is.Not.Null);
+            var combatObject = new SerializedObject(combat);
+            Assert.That(
+                combatObject.FindProperty("mapBridge").objectReferenceValue,
+                Is.SameAs(mapBridge));
+            Assert.That(
+                combatObject.FindProperty("presenter").objectReferenceValue,
+                Is.SameAs(presenter));
             Assert.That(prefab.GetComponent<DroneCameraFollow>(), Is.Not.Null);
             var cameraFollow = new SerializedObject(prefab.GetComponent<DroneCameraFollow>());
             Assert.That(cameraFollow.FindProperty("lookHeight").floatValue, Is.GreaterThan(0.5f));

@@ -36,6 +36,8 @@ namespace StreamingMapDemo.Drones.Editor
             if (crosshair != null && crosshair.GetComponent<DroneTargetingView>() != null &&
                 crosshair.transform.Find("TargetBrackets/AcquisitionLockBar") != null &&
                 hasHealthBillboard &&
+                drone.GetComponent<DroneMapBridge>() != null &&
+                drone.GetComponent<DroneCombatPresenter>() != null &&
                 AssetDatabase.LoadAssetAtPath<CombatHudPresenter>(HudPrefabPath) != null &&
                 AssetDatabase.LoadAssetAtPath<GameObject>(HudPrefabPath).transform.Find("LockStatus") != null &&
                 AssetDatabase.LoadAssetAtPath<ParticleSystem>(ImpactVfxPrefabPath) != null &&
@@ -125,13 +127,26 @@ namespace StreamingMapDemo.Drones.Editor
                 SetReference(vfxSerialized, "impactPrefab", impactVfxPrefab);
                 SetReference(vfxSerialized, "destructionPrefab", destructionVfxPrefab);
                 vfxSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+                DroneMapBridge mapBridge = root.AddComponent<DroneMapBridge>();
+                DroneCombatPresenter presenter =
+                    root.AddComponent<DroneCombatPresenter>();
+                SerializedObject presenterSerialized =
+                    new SerializedObject(presenter);
+                SetReference(presenterSerialized, "playerView", view);
+                SetReference(presenterSerialized, "enemyViewPrefab", enemyPrefab);
+                SetReference(
+                    presenterSerialized,
+                    "projectileViewPrefab",
+                    projectileViewPrefab);
+                SetReference(presenterSerialized, "hudPrefab", hudPrefab);
+                SetReference(presenterSerialized, "vfxPresenter", vfx);
+                presenterSerialized.ApplyModifiedPropertiesWithoutUndo();
+
                 DroneCombatController combat = root.AddComponent<DroneCombatController>();
                 SerializedObject combatSerialized = new SerializedObject(combat);
-                SetReference(combatSerialized, "playerView", view);
-                SetReference(combatSerialized, "enemyViewPrefab", enemyPrefab);
-                SetReference(combatSerialized, "projectileViewPrefab", projectileViewPrefab);
-                SetReference(combatSerialized, "hudPrefab", hudPrefab);
-                SetReference(combatSerialized, "vfxPresenter", vfx);
+                SetReference(combatSerialized, "mapBridge", mapBridge);
+                SetReference(combatSerialized, "presenter", presenter);
                 combatSerialized.ApplyModifiedPropertiesWithoutUndo();
 
                 PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);

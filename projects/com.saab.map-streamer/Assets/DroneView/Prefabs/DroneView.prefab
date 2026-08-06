@@ -621,6 +621,8 @@ GameObject:
   - component: {fileID: 4286661925970828426}
   - component: {fileID: 7735169952863922051}
   - component: {fileID: 3124960840374023899}
+  - component: {fileID: 381102334455667788}
+  - component: {fileID: 481102334455667789}
   - component: {fileID: 6059343518712755875}
   m_Layer: 2
   m_Name: DroneView
@@ -766,16 +768,42 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 50d48a7fcb128b848855bfa6546fb0ac, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  mapBridge: {fileID: 381102334455667788}
+  presenter: {fileID: 481102334455667789}
+  seed: 1337
+--- !u!114 &381102334455667788
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2486747982703833463}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f4f0d7c9c8a4ea6bb34b9cfd66520b2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  mapCamera: {fileID: 0}
+  worldCollisionMask:
+    serializedVersion: 2
+    m_Bits: 4294967291
+--- !u!114 &481102334455667789
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2486747982703833463}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a6c2e3e18b84f88a2878e1552ed2d84, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
   playerView: {fileID: 3187811906874150515}
   enemyViewPrefab: {fileID: 2628804550128235457, guid: bb84af944d685544d996893e6815953b, type: 3}
   projectileViewPrefab: {fileID: 4745997654140426968, guid: 41ef3e3eab8502d4b8bb5467277e3af8, type: 3}
   hudPrefab: {fileID: 8582429477769451499, guid: ca644199e9f69964783cebe7a298c04f, type: 3}
   vfxPresenter: {fileID: 7139347783190953756}
-  mapCamera: {fileID: 0}
-  worldCollisionMask:
-    serializedVersion: 2
-    m_Bits: 4294967291
-  seed: 1337
 --- !u!1 &2590143053996781159
 GameObject:
   m_ObjectHideFlags: 0

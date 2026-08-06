@@ -26,6 +26,32 @@ namespace StreamingMapDemo.Drones.Tests
         }
 
         [Test]
+        public void SimulationRunner_UsesFixedTicksAndRestartsCleanly()
+        {
+            var runner = new DroneSimulationRunner(
+                new FlatWorld(),
+                new GlobalPosition(10, 15, 20),
+                42);
+            var presentedTicks = new List<uint>();
+
+            bool stepped = runner.Advance(
+                LocalDroneSimulation.TickDelta * 2.5f,
+                Float3.Zero,
+                Float3.Forward,
+                false,
+                (snapshot, events) => presentedTicks.Add(snapshot.Tick));
+
+            Assert.IsTrue(stepped);
+            CollectionAssert.AreEqual(new uint[] { 1, 2 }, presentedTicks);
+            Assert.AreEqual(2, runner.CurrentSnapshot.Tick);
+
+            SimulationSnapshot restarted = runner.Restart();
+            Assert.AreEqual(0, restarted.Tick);
+            Assert.AreEqual(MatchOutcome.Running, restarted.Match.Outcome);
+            Assert.AreEqual(0, restarted.Match.EnemyKills);
+        }
+
+        [Test]
         public void EncounterCadence_HasCeasefireAndAtMostTwoAttackers()
         {
             var simulation = new LocalDroneSimulation(new FlatWorld(), new GlobalPosition(0, 15, 0));

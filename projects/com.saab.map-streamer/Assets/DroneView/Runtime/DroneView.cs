@@ -152,9 +152,9 @@ namespace StreamingMapDemo.Drones
         {
             if (droneBody != null)
             {
-                // Translation is applied to CameraControl.GlobalPosition by
-                // DroneMapMovementController. Keep the drone in the local
-                // physics bubble so streaming and Unity coordinates agree.
+                // Authoritative translation is applied to CameraControl by the
+                // combat map bridge. Keep the view in the local physics bubble
+                // so streamed-map and Unity coordinates agree.
                 droneBody.velocity = Vector3.zero;
                 droneBody.angularVelocity = Vector3.zero;
             }
